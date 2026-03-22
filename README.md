@@ -16,7 +16,7 @@ Built by [Groundwork Analytics](https://petropt.com)
 
 petro-mcp is a [Model Context Protocol](https://modelcontextprotocol.io) server that exposes petroleum engineering workflows to LLMs like Claude and other MCP-compatible assistants. Instead of writing scripts to parse LAS files or fit decline curves, just ask your AI assistant in plain English.
 
-**Why MCP?** MCP is an open standard that lets AI assistants interact with external data and tools. While other energy MCP servers provide commodity prices ([OilpriceAPI](https://github.com/OilpriceAPI/mcp-server)), operational data via RAG ([Oil & Gas RAG](https://github.com/kukuhtw/mcp_rag_go)), or EIA statistics ([mcp-energy](https://github.com/ebarros23/mcp-energy)), petro-mcp is purpose-built for petroleum engineering workflows -- LAS well log parsing, physics-constrained decline curve analysis, nodal analysis, and production diagnostics.
+**Why MCP?** MCP is an open standard that lets AI assistants interact with external data and tools. While other energy MCP servers provide commodity prices ([OilpriceAPI](https://github.com/OilpriceAPI/mcp-server)), petro-mcp is purpose-built for petroleum engineering workflows -- LAS well log parsing, physics-constrained decline curve analysis, nodal analysis, and production diagnostics.
 
 ## Prerequisites
 
