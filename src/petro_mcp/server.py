@@ -12,6 +12,20 @@ from petro_mcp.tools.las import get_curve_data, get_well_header, list_curves, re
 from petro_mcp.tools.production import query_production_data
 from petro_mcp.tools.pvt import bubble_point as _bubble_point, calculate_pvt as _calculate_pvt
 from petro_mcp.tools.trends import analyze_production_trends
+from petro_mcp.tools.petrophysics import (
+    calculate_archie_sw as _archie_sw,
+    calculate_density_porosity as _density_porosity,
+    calculate_effective_porosity as _effective_porosity,
+    calculate_hpt as _hpt,
+    calculate_indonesian_sw as _indonesian_sw,
+    calculate_net_pay as _net_pay,
+    calculate_neutron_density_porosity as _nd_porosity,
+    calculate_permeability_coates as _perm_coates,
+    calculate_permeability_timur as _perm_timur,
+    calculate_simandoux_sw as _simandoux_sw,
+    calculate_sonic_porosity as _sonic_porosity,
+    calculate_vshale as _vshale,
+)
 from petro_mcp.tools.units import convert_units as _convert_units, list_units as _list_units
 
 mcp = FastMCP(
@@ -259,6 +273,210 @@ def calculate_bubble_point(
         rs: Solution gas-oil ratio at bubble point in scf/STB.
     """
     return _bubble_point(api_gravity, gas_sg, temperature, rs)
+
+
+# --- Petrophysics Tools ---
+
+
+@mcp.tool()
+def calculate_vshale(
+    gr: float, gr_clean: float, gr_shale: float, method: str = "linear",
+) -> str:
+    """Calculate shale volume (Vshale) from gamma ray log.
+
+    Methods: linear, larionov_tertiary, larionov_older, clavier.
+
+    Args:
+        gr: Gamma ray reading (API units).
+        gr_clean: GR in clean sand (API units).
+        gr_shale: GR in pure shale (API units).
+        method: Calculation method. Default 'linear'.
+    """
+    return _vshale(gr, gr_clean, gr_shale, method)
+
+
+@mcp.tool()
+def calculate_density_porosity(
+    rhob: float, rho_matrix: float = 2.65, rho_fluid: float = 1.0,
+) -> str:
+    """Calculate porosity from bulk density log.
+
+    Args:
+        rhob: Bulk density (g/cc).
+        rho_matrix: Matrix density (g/cc). Default 2.65 (sandstone).
+        rho_fluid: Fluid density (g/cc). Default 1.0 (fresh water).
+    """
+    return _density_porosity(rhob, rho_matrix, rho_fluid)
+
+
+@mcp.tool()
+def calculate_sonic_porosity(
+    dt: float, dt_matrix: float = 55.5, dt_fluid: float = 189.0, method: str = "wyllie",
+) -> str:
+    """Calculate porosity from sonic (compressional) log.
+
+    Methods: wyllie (time-average), raymer (Raymer-Hunt-Gardner).
+
+    Args:
+        dt: Interval transit time (us/ft).
+        dt_matrix: Matrix transit time (us/ft). Default 55.5 (sandstone).
+        dt_fluid: Fluid transit time (us/ft). Default 189.0.
+        method: 'wyllie' or 'raymer'. Default 'wyllie'.
+    """
+    return _sonic_porosity(dt, dt_matrix, dt_fluid, method)
+
+
+@mcp.tool()
+def calculate_nd_porosity(nphi: float, dphi: float) -> str:
+    """Quick-look porosity from neutron-density combination (RMS method).
+
+    Args:
+        nphi: Neutron porosity (fraction v/v).
+        dphi: Density porosity (fraction v/v).
+    """
+    return _nd_porosity(nphi, dphi)
+
+
+@mcp.tool()
+def calculate_effective_porosity(phi_total: float, vshale: float) -> str:
+    """Calculate effective porosity from total porosity and shale volume.
+
+    PHIE = PHIT * (1 - Vshale)
+
+    Args:
+        phi_total: Total porosity (fraction v/v, 0-1).
+        vshale: Shale volume (fraction v/v, 0-1).
+    """
+    return _effective_porosity(phi_total, vshale)
+
+
+@mcp.tool()
+def calculate_archie_sw(
+    rt: float, phi: float, rw: float,
+    a: float = 1.0, m: float = 2.0, n: float = 2.0,
+) -> str:
+    """Calculate water saturation using Archie equation (clean sands).
+
+    Sw = (a * Rw / (phi^m * Rt))^(1/n)
+
+    Args:
+        rt: True formation resistivity (ohm-m).
+        phi: Porosity (fraction v/v, 0-1).
+        rw: Formation water resistivity (ohm-m).
+        a: Tortuosity factor. Default 1.0.
+        m: Cementation exponent. Default 2.0.
+        n: Saturation exponent. Default 2.0.
+    """
+    return _archie_sw(rt, phi, rw, a, m, n)
+
+
+@mcp.tool()
+def calculate_simandoux_sw(
+    rt: float, phi: float, rw: float, vshale: float, rsh: float,
+    a: float = 1.0, m: float = 2.0, n: float = 2.0,
+) -> str:
+    """Calculate water saturation using Simandoux equation (shaly sands).
+
+    Args:
+        rt: True formation resistivity (ohm-m).
+        phi: Porosity (fraction v/v, 0-1).
+        rw: Formation water resistivity (ohm-m).
+        vshale: Shale volume (fraction v/v, 0-1).
+        rsh: Shale resistivity (ohm-m).
+        a: Tortuosity factor. Default 1.0.
+        m: Cementation exponent. Default 2.0.
+        n: Saturation exponent. Default 2.0.
+    """
+    return _simandoux_sw(rt, phi, rw, vshale, rsh, a, m, n)
+
+
+@mcp.tool()
+def calculate_indonesian_sw(
+    rt: float, phi: float, rw: float, vshale: float, rsh: float,
+    a: float = 1.0, m: float = 2.0, n: float = 2.0,
+) -> str:
+    """Calculate water saturation using Indonesian equation (high-Vshale formations).
+
+    Poupon and Leveaux (1971). Better than Archie/Simandoux for very shaly sands.
+
+    Args:
+        rt: True formation resistivity (ohm-m).
+        phi: Porosity (fraction v/v, 0-1).
+        rw: Formation water resistivity (ohm-m).
+        vshale: Shale volume (fraction v/v, 0-1).
+        rsh: Shale resistivity (ohm-m).
+        a: Tortuosity factor. Default 1.0.
+        m: Cementation exponent. Default 2.0.
+        n: Saturation exponent. Default 2.0.
+    """
+    return _indonesian_sw(rt, phi, rw, vshale, rsh, a, m, n)
+
+
+@mcp.tool()
+def calculate_permeability_timur(phi: float, swirr: float) -> str:
+    """Estimate permeability using Timur (1968) equation.
+
+    k = 0.136 * phi^4.4 / Swirr^2
+
+    Args:
+        phi: Porosity (fraction v/v, 0-1).
+        swirr: Irreducible water saturation (fraction v/v, 0-1).
+    """
+    return _perm_timur(phi, swirr)
+
+
+@mcp.tool()
+def calculate_permeability_coates(
+    phi: float, bvi: float, ffi: float, c: float = 10.0,
+) -> str:
+    """Estimate permeability using Coates (1991) equation.
+
+    k = ((phi / C)^2 * (FFI / BVI))^2
+
+    Args:
+        phi: Porosity (fraction v/v, 0-1).
+        bvi: Bound volume irreducible (fraction v/v).
+        ffi: Free fluid index (fraction v/v).
+        c: Coates constant. Default 10.0.
+    """
+    return _perm_coates(phi, bvi, ffi, c)
+
+
+@mcp.tool()
+def calculate_net_pay(
+    depths: list[float], phi: list[float], sw: list[float], vshale: list[float],
+    phi_cutoff: float = 0.06, sw_cutoff: float = 0.5, vsh_cutoff: float = 0.5,
+) -> str:
+    """Determine net pay by applying porosity, Sw, and Vshale cutoffs to log data.
+
+    Returns net pay thickness, net-to-gross, average properties over pay,
+    and per-sample pay flags.
+
+    Args:
+        depths: Measured depths (ft).
+        phi: Porosity values (fraction v/v) at each depth.
+        sw: Water saturation values (fraction v/v) at each depth.
+        vshale: Shale volume values (fraction v/v) at each depth.
+        phi_cutoff: Minimum porosity for pay. Default 0.06.
+        sw_cutoff: Maximum water saturation for pay. Default 0.5.
+        vsh_cutoff: Maximum Vshale for pay. Default 0.5.
+    """
+    return _net_pay(depths, phi, sw, vshale, phi_cutoff, sw_cutoff, vsh_cutoff)
+
+
+@mcp.tool()
+def calculate_hpt(
+    thickness: float, phi: float, sw: float, ntg: float = 1.0,
+) -> str:
+    """Calculate hydrocarbon pore thickness (HPT = h * phi * (1-Sw) * NTG).
+
+    Args:
+        thickness: Net or gross thickness (ft).
+        phi: Average porosity (fraction v/v, 0-1).
+        sw: Average water saturation (fraction v/v, 0-1).
+        ntg: Net-to-gross ratio (0-1). Default 1.0.
+    """
+    return _hpt(thickness, phi, sw, ntg)
 
 
 # --- Unit Conversion Tools ---
