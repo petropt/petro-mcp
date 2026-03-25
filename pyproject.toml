@@ -40,6 +40,9 @@ dependencies = [
     "petbox-dca>=2.0.0",
 ]
 
+[project.optional-dependencies]
+trajectory = ["welleng>=0.8"]
+
 [project.urls]
 Homepage = "https://petropt.com"
 Repository = "https://github.com/petropt/petro-mcp"
