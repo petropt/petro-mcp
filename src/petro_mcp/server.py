@@ -1405,6 +1405,134 @@ def list_oilfield_units() -> str:
     return _list_units()
 
 
+# --- Trajectory / Directional Survey Tools (optional: requires welleng) ---
+
+
+if _HAS_TRAJECTORY:
+
+    @mcp.tool()
+    def calculate_well_survey(
+        md: list[float],
+        inclination: list[float],
+        azimuth: list[float],
+        unit: str = "feet",
+    ) -> str:
+        """Calculate well trajectory using minimum curvature method.
+
+        Takes survey station data (MD, inclination, azimuth) and returns
+        computed North, East, TVD, and dogleg severity at each station.
+
+        Args:
+            md: List of measured depths (ft or m).
+            inclination: List of inclinations (degrees from vertical, 0-180).
+            azimuth: List of azimuths (degrees from north, 0-360).
+            unit: Depth unit — 'feet' or 'meters'. Default 'feet'.
+        """
+        return _calculate_survey(md, inclination, azimuth, unit)
+
+    @mcp.tool()
+    def calculate_dogleg_severity(
+        md1: float,
+        inc1: float,
+        azi1: float,
+        md2: float,
+        inc2: float,
+        azi2: float,
+        course_length_unit: str = "feet",
+    ) -> str:
+        """Calculate dogleg severity between two survey stations.
+
+        Returns DLS in deg/100ft (or deg/30m for metric).
+
+        Args:
+            md1: Measured depth at station 1.
+            inc1: Inclination at station 1 (degrees).
+            azi1: Azimuth at station 1 (degrees).
+            md2: Measured depth at station 2.
+            inc2: Inclination at station 2 (degrees).
+            azi2: Azimuth at station 2 (degrees).
+            course_length_unit: 'feet' or 'meters'. Default 'feet'.
+        """
+        return _calculate_dls(md1, inc1, azi1, md2, inc2, azi2, course_length_unit)
+
+    @mcp.tool()
+    def calculate_vertical_section(
+        md: list[float],
+        inclination: list[float],
+        azimuth: list[float],
+        vs_azimuth: float = 0.0,
+        unit: str = "feet",
+    ) -> str:
+        """Project well trajectory onto a vertical section plane.
+
+        Calculates the horizontal displacement projected onto a plane at the
+        given azimuth. Standard way to view a well path in 2D cross-section.
+
+        Args:
+            md: List of measured depths.
+            inclination: List of inclinations (degrees).
+            azimuth: List of azimuths (degrees).
+            vs_azimuth: Vertical section azimuth in degrees (0 = North). Default 0.
+            unit: Depth unit — 'feet' or 'meters'. Default 'feet'.
+        """
+        return _calculate_vs(md, inclination, azimuth, vs_azimuth, unit)
+
+    @mcp.tool()
+    def calculate_wellbore_tortuosity(
+        md: list[float],
+        inclination: list[float],
+        azimuth: list[float],
+        unit: str = "feet",
+    ) -> str:
+        """Calculate wellbore tortuosity index from survey data.
+
+        Tortuosity measures how much the wellbore deviates from an ideal path.
+        Higher values indicate more tortuous wellpath, impacting drilling and
+        production operations.
+
+        Args:
+            md: List of measured depths.
+            inclination: List of inclinations (degrees).
+            azimuth: List of azimuths (degrees).
+            unit: Depth unit — 'feet' or 'meters'. Default 'feet'.
+        """
+        return _calculate_tortuosity(md, inclination, azimuth, unit)
+
+    @mcp.tool()
+    def check_well_anticollision(
+        well1_md: list[float],
+        well1_inc: list[float],
+        well1_azi: list[float],
+        well2_md: list[float],
+        well2_inc: list[float],
+        well2_azi: list[float],
+        well2_start_north: float = 0.0,
+        well2_start_east: float = 0.0,
+        unit: str = "feet",
+    ) -> str:
+        """Check separation between two wells at closest approach.
+
+        Computes center-to-center distance between two well trajectories
+        and identifies the closest approach point.
+
+        Args:
+            well1_md: Measured depths for reference well.
+            well1_inc: Inclinations for reference well (degrees).
+            well1_azi: Azimuths for reference well (degrees).
+            well2_md: Measured depths for offset well.
+            well2_inc: Inclinations for offset well (degrees).
+            well2_azi: Azimuths for offset well (degrees).
+            well2_start_north: Offset well surface location north of reference.
+            well2_start_east: Offset well surface location east of reference.
+            unit: Depth unit — 'feet' or 'meters'. Default 'feet'.
+        """
+        return _check_anticollision(
+            well1_md, well1_inc, well1_azi,
+            well2_md, well2_inc, well2_azi,
+            well2_start_north, well2_start_east, unit,
+        )
+
+
 # --- Resources ---
 
 
