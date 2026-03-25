@@ -38,7 +38,60 @@ from petro_mcp.tools.petrophysics import (
     calculate_sonic_porosity as _sonic_porosity,
     calculate_vshale as _vshale,
 )
+from petro_mcp.tools.reservoir import (
+    calculate_havlena_odeh as _havlena_odeh,
+    calculate_pz_analysis as _pz_analysis,
+    calculate_radius_of_investigation as _radius_of_investigation,
+    calculate_recovery_factor as _recovery_factor,
+    calculate_volumetric_ogip as _volumetric_ogip,
+    calculate_volumetric_ooip as _volumetric_ooip,
+)
+from petro_mcp.tools.drilling import (
+    calculate_annular_velocity as _annular_velocity,
+    calculate_bit_pressure_drop as _bit_pressure_drop,
+    calculate_burst_pressure as _burst_pressure,
+    calculate_collapse_pressure as _collapse_pressure,
+    calculate_ecd as _ecd,
+    calculate_formation_pressure_gradient as _fpg,
+    calculate_hydrostatic_pressure as _hydrostatic,
+    calculate_icp_fcp as _icp_fcp,
+    calculate_kill_mud_weight as _kill_mw,
+    calculate_maasp as _maasp,
+    calculate_nozzle_tfa as _nozzle_tfa,
+)
+from petro_mcp.tools.production_eng import (
+    calculate_beggs_brill_pressure_drop as _beggs_brill,
+    calculate_coleman_critical_rate as _coleman_critical,
+    calculate_critical_choke_flow as _choke_flow,
+    calculate_erosional_velocity as _erosional_velocity,
+    calculate_hydrate_inhibitor_dosing as _hydrate_inhibitor,
+    calculate_hydrate_temperature as _hydrate_temp,
+    calculate_turner_critical_rate as _turner_critical,
+)
+from petro_mcp.tools.economics import (
+    calculate_breakeven_price as _breakeven_price,
+    calculate_irr as _irr,
+    calculate_npv as _npv,
+    calculate_operating_netback as _operating_netback,
+    calculate_payout_period as _payout_period,
+    calculate_price_sensitivity as _price_sensitivity,
+    calculate_pv10 as _pv10,
+    calculate_well_economics as _well_economics,
+)
 from petro_mcp.tools.units import convert_units as _convert_units, list_units as _list_units
+
+# Optional trajectory tools (require welleng)
+try:
+    from petro_mcp.tools.trajectory import (
+        calculate_survey as _calculate_survey,
+        calculate_dogleg_severity as _calculate_dls,
+        calculate_vertical_section as _calculate_vs,
+        calculate_tortuosity as _calculate_tortuosity,
+        check_anticollision as _check_anticollision,
+    )
+    _HAS_TRAJECTORY = True
+except ImportError:
+    _HAS_TRAJECTORY = False
 
 mcp = FastMCP(
     "petro-mcp",
@@ -311,6 +364,158 @@ def run_nodal_analysis(
         fluid_gradient: Fluid pressure gradient in psi/ft (default 0.35).
     """
     return nodal_analysis(reservoir_pressure, PI, tubing_size, wellhead_pressure, depth, fluid_gradient)
+
+
+# --- Reservoir Engineering / Material Balance Tools ---
+
+
+@mcp.tool()
+def pz_analysis(
+    pressures: list[float],
+    cumulative_gas: list[float],
+    abandonment_pressure: float | None = None,
+) -> str:
+    """Gas material balance: P/Z vs cumulative gas production analysis.
+
+    Fits a linear P/Z vs Gp trend to estimate Original Gas In Place (OGIP).
+    The #1 reservoir engineering spreadsheet calculation.
+
+    Args:
+        pressures: Reservoir pressures (or P/Z values) in psi at each time step.
+        cumulative_gas: Cumulative gas production in Bcf at each pressure.
+        abandonment_pressure: Optional abandonment pressure in psi for
+            recoverable gas estimate.
+    """
+    return _pz_analysis(pressures, cumulative_gas, abandonment_pressure)
+
+
+@mcp.tool()
+def havlena_odeh(
+    pressures: list[float],
+    np_values: list[float],
+    rp_values: list[float],
+    wp_values: list[float],
+    wi_values: list[float],
+    bo_values: list[float],
+    rs_values: list[float],
+    bg_values: list[float],
+    bw_values: list[float],
+    boi: float,
+    rsi: float,
+    bgi: float,
+    cf: float | None = None,
+    swi: float | None = None,
+) -> str:
+    """Oil material balance using Havlena-Odeh straight-line method (1963).
+
+    Identifies drive mechanism (depletion, gas cap, water drive) and estimates
+    Original Oil In Place (OOIP). Returns F vs Et plot data for diagnostics.
+
+    Args:
+        pressures: Reservoir pressures at each time step (psi).
+        np_values: Cumulative oil production at each step (STB).
+        rp_values: Cumulative producing GOR at each step (scf/STB).
+        wp_values: Cumulative water production at each step (STB).
+        wi_values: Cumulative water injection at each step (STB).
+        bo_values: Oil FVF at each pressure (bbl/STB).
+        rs_values: Solution GOR at each pressure (scf/STB).
+        bg_values: Gas FVF at each pressure (bbl/scf).
+        bw_values: Water FVF at each pressure (bbl/STB).
+        boi: Initial oil FVF (bbl/STB).
+        rsi: Initial solution GOR (scf/STB).
+        bgi: Initial gas FVF (bbl/scf).
+        cf: Formation compressibility (1/psi). Optional.
+        swi: Initial water saturation (fraction, 0-1). Optional.
+    """
+    return _havlena_odeh(
+        pressures, np_values, rp_values, wp_values, wi_values,
+        bo_values, rs_values, bg_values, bw_values,
+        boi, rsi, bgi, cf, swi,
+    )
+
+
+@mcp.tool()
+def volumetric_ooip(
+    area_acres: float,
+    thickness_ft: float,
+    porosity: float,
+    sw: float,
+    bo: float,
+) -> str:
+    """Calculate volumetric Original Oil In Place (OOIP).
+
+    OOIP = 7758 * A * h * phi * (1-Sw) / Bo (STB)
+
+    Args:
+        area_acres: Reservoir area in acres.
+        thickness_ft: Net pay thickness in feet.
+        porosity: Porosity (fraction, 0-1).
+        sw: Water saturation (fraction, 0-1).
+        bo: Oil formation volume factor (bbl/STB).
+    """
+    return _volumetric_ooip(area_acres, thickness_ft, porosity, sw, bo)
+
+
+@mcp.tool()
+def volumetric_ogip(
+    area_acres: float,
+    thickness_ft: float,
+    porosity: float,
+    sw: float,
+    bg: float,
+) -> str:
+    """Calculate volumetric Original Gas In Place (OGIP).
+
+    OGIP = 43560 * A * h * phi * (1-Sw) / Bg (scf)
+
+    Args:
+        area_acres: Reservoir area in acres.
+        thickness_ft: Net pay thickness in feet.
+        porosity: Porosity (fraction, 0-1).
+        sw: Water saturation (fraction, 0-1).
+        bg: Gas formation volume factor (ft³/scf).
+    """
+    return _volumetric_ogip(area_acres, thickness_ft, porosity, sw, bg)
+
+
+@mcp.tool()
+def recovery_factor(
+    ooip_or_ogip: float,
+    cumulative_production: float,
+) -> str:
+    """Calculate recovery factor (RF = Np/N or Gp/G).
+
+    Works for both oil and gas — just use consistent units.
+
+    Args:
+        ooip_or_ogip: Original oil or gas in place.
+        cumulative_production: Cumulative production (same units).
+    """
+    return _recovery_factor(ooip_or_ogip, cumulative_production)
+
+
+@mcp.tool()
+def radius_of_investigation(
+    permeability_md: float,
+    time_hours: float,
+    porosity: float,
+    viscosity_cp: float,
+    total_compressibility: float,
+) -> str:
+    """Calculate radius of investigation for a well test.
+
+    r_inv = 0.029 * sqrt(k*t / (phi*mu*ct)), from Lee (1982).
+
+    Args:
+        permeability_md: Formation permeability in millidarcies.
+        time_hours: Elapsed time in hours.
+        porosity: Porosity (fraction, 0-1).
+        viscosity_cp: Fluid viscosity in centipoise.
+        total_compressibility: Total system compressibility in 1/psi.
+    """
+    return _radius_of_investigation(
+        permeability_md, time_hours, porosity, viscosity_cp, total_compressibility,
+    )
 
 
 # --- PVT Tools ---
@@ -653,6 +858,522 @@ def calculate_hpt(
     return _hpt(thickness, phi, sw, ntg)
 
 
+# --- Drilling Engineering Tools ---
+
+
+@mcp.tool()
+def calculate_hydrostatic_pressure(mud_weight_ppg: float, tvd_ft: float) -> str:
+    """Calculate hydrostatic pressure (P = 0.052 * MW * TVD).
+
+    Args:
+        mud_weight_ppg: Mud weight in pounds per gallon (ppg).
+        tvd_ft: True vertical depth in feet.
+    """
+    return _hydrostatic(mud_weight_ppg, tvd_ft)
+
+
+@mcp.tool()
+def calculate_ecd(
+    mud_weight_ppg: float, annular_pressure_loss_psi: float, tvd_ft: float,
+) -> str:
+    """Calculate equivalent circulating density (ECD = MW + APL / (0.052 * TVD)).
+
+    Args:
+        mud_weight_ppg: Static mud weight (ppg).
+        annular_pressure_loss_psi: Annular pressure loss (psi).
+        tvd_ft: True vertical depth (ft).
+    """
+    return _ecd(mud_weight_ppg, annular_pressure_loss_psi, tvd_ft)
+
+
+@mcp.tool()
+def calculate_formation_pressure_gradient(pressure_psi: float, tvd_ft: float) -> str:
+    """Calculate formation pressure gradient as ppg equivalent (FPG = P / (0.052 * TVD)).
+
+    Args:
+        pressure_psi: Formation pressure (psi).
+        tvd_ft: True vertical depth (ft).
+    """
+    return _fpg(pressure_psi, tvd_ft)
+
+
+@mcp.tool()
+def calculate_kill_mud_weight(
+    sidp_psi: float, original_mud_weight_ppg: float, tvd_ft: float,
+) -> str:
+    """Calculate kill mud weight for well control (Kill MW = MW + SIDP / (0.052 * TVD)).
+
+    Args:
+        sidp_psi: Shut-in drill pipe pressure (psi).
+        original_mud_weight_ppg: Original mud weight (ppg).
+        tvd_ft: True vertical depth (ft).
+    """
+    return _kill_mw(sidp_psi, original_mud_weight_ppg, tvd_ft)
+
+
+@mcp.tool()
+def calculate_icp_fcp(
+    sidp_psi: float, circulating_pressure_psi: float,
+    kill_mud_weight_ppg: float, original_mud_weight_ppg: float,
+) -> str:
+    """Calculate Initial and Final Circulating Pressures for well kill operations.
+
+    ICP = SIDP + slow circulating pressure.
+    FCP = SCP * (Kill MW / Original MW).
+
+    Args:
+        sidp_psi: Shut-in drill pipe pressure (psi).
+        circulating_pressure_psi: Slow circulating pressure (psi).
+        kill_mud_weight_ppg: Kill mud weight (ppg).
+        original_mud_weight_ppg: Original mud weight (ppg).
+    """
+    return _icp_fcp(sidp_psi, circulating_pressure_psi, kill_mud_weight_ppg, original_mud_weight_ppg)
+
+
+@mcp.tool()
+def calculate_maasp(
+    fracture_gradient_ppg: float, mud_weight_ppg: float, shoe_tvd_ft: float,
+) -> str:
+    """Calculate Maximum Allowable Annular Surface Pressure.
+
+    MAASP = (FG - MW) * 0.052 * shoe TVD.
+
+    Args:
+        fracture_gradient_ppg: Fracture gradient at shoe (ppg).
+        mud_weight_ppg: Current mud weight (ppg).
+        shoe_tvd_ft: Casing shoe TVD (ft).
+    """
+    return _maasp(fracture_gradient_ppg, mud_weight_ppg, shoe_tvd_ft)
+
+
+@mcp.tool()
+def calculate_annular_velocity(
+    flow_rate_gpm: float, hole_diameter_in: float, pipe_od_in: float,
+) -> str:
+    """Calculate annular velocity (AV = 24.51 * Q / (Dh^2 - Dp^2)).
+
+    Args:
+        flow_rate_gpm: Flow rate in gallons per minute.
+        hole_diameter_in: Hole or casing ID (inches).
+        pipe_od_in: Pipe or drill string OD (inches).
+    """
+    return _annular_velocity(flow_rate_gpm, hole_diameter_in, pipe_od_in)
+
+
+@mcp.tool()
+def calculate_nozzle_tfa(nozzle_sizes: list[int]) -> str:
+    """Calculate total flow area (TFA) of bit nozzles.
+
+    TFA = sum(pi/4 * (d/32)^2) for each nozzle size in 32nds of an inch.
+
+    Args:
+        nozzle_sizes: List of nozzle sizes in 32nds of an inch (e.g. [12, 12, 12]).
+    """
+    return _nozzle_tfa(nozzle_sizes)
+
+
+@mcp.tool()
+def calculate_bit_pressure_drop(
+    flow_rate_gpm: float, mud_weight_ppg: float, tfa_sqin: float,
+) -> str:
+    """Calculate pressure drop across the bit (dP = MW * Q^2 / (12032 * TFA^2)).
+
+    Args:
+        flow_rate_gpm: Flow rate in gallons per minute.
+        mud_weight_ppg: Mud weight (ppg).
+        tfa_sqin: Total flow area of nozzles (in^2).
+    """
+    return _bit_pressure_drop(flow_rate_gpm, mud_weight_ppg, tfa_sqin)
+
+
+@mcp.tool()
+def calculate_burst_pressure(
+    yield_strength_psi: float, wall_thickness_in: float, od_in: float,
+) -> str:
+    """Calculate internal burst pressure using Barlow's formula with API 12.5% tolerance.
+
+    P_burst = 0.875 * 2 * Fy * t / OD.
+
+    Args:
+        yield_strength_psi: Minimum yield strength (psi).
+        wall_thickness_in: Nominal wall thickness (inches).
+        od_in: Outer diameter (inches).
+    """
+    return _burst_pressure(yield_strength_psi, wall_thickness_in, od_in)
+
+
+@mcp.tool()
+def calculate_collapse_pressure(
+    od_in: float, wall_thickness_in: float, yield_strength_psi: float, grade: str = "",
+) -> str:
+    """Calculate collapse pressure rating per API 5C3.
+
+    Determines regime (yield, plastic, transition, elastic) from D/t ratio
+    and yield strength, then applies the corresponding API formula.
+
+    Args:
+        od_in: Casing outer diameter (inches).
+        wall_thickness_in: Wall thickness (inches).
+        yield_strength_psi: Minimum yield strength (psi).
+        grade: Optional API grade label (e.g. 'N-80') for reference.
+    """
+    return _collapse_pressure(od_in, wall_thickness_in, yield_strength_psi, grade)
+
+
+# --- Economics Tools ---
+
+
+@mcp.tool()
+def calculate_well_economics(
+    monthly_oil_bbl: list[float],
+    monthly_gas_mcf: list[float],
+    monthly_water_bbl: list[float],
+    oil_price_bbl: float,
+    gas_price_mcf: float,
+    opex_monthly: float,
+    capex: float,
+    royalty_pct: float = 0.125,
+    tax_rate: float = 0.0,
+    discount_rate: float = 0.10,
+    working_interest: float = 1.0,
+    net_revenue_interest: float = 0.875,
+) -> str:
+    """Full discounted cash flow analysis for a well.
+
+    Takes production arrays (from decline forecast) plus economic assumptions.
+    Returns NPV, IRR, payout period, profitability index, and monthly cash flows.
+
+    Args:
+        monthly_oil_bbl: Monthly oil production (bbl) for each period.
+        monthly_gas_mcf: Monthly gas production (Mcf) for each period.
+        monthly_water_bbl: Monthly water production (bbl) for each period.
+        oil_price_bbl: Oil price ($/bbl).
+        gas_price_mcf: Gas price ($/Mcf).
+        opex_monthly: Monthly operating expense ($).
+        capex: Total capital expenditure ($), applied at time 0.
+        royalty_pct: Royalty fraction (0-1). Default 0.125.
+        tax_rate: Severance/production tax rate (0-1). Default 0.0.
+        discount_rate: Annual discount rate for NPV. Default 0.10.
+        working_interest: Working interest fraction (0-1). Default 1.0.
+        net_revenue_interest: Net revenue interest fraction (0-1). Default 0.875.
+    """
+    return _well_economics(
+        monthly_oil_bbl, monthly_gas_mcf, monthly_water_bbl,
+        oil_price_bbl, gas_price_mcf, opex_monthly, capex,
+        royalty_pct, tax_rate, discount_rate, working_interest, net_revenue_interest,
+    )
+
+
+@mcp.tool()
+def calculate_npv(
+    cash_flows: list[float],
+    discount_rate: float = 0.10,
+) -> str:
+    """Calculate Net Present Value from monthly cash flows.
+
+    NPV = sum(CF_t / (1 + r/12)^t) for t = 0, 1, 2, ...
+
+    Args:
+        cash_flows: Monthly cash flows ($). First element is typically negative (capex).
+        discount_rate: Annual discount rate. Default 0.10.
+    """
+    return _npv(cash_flows, discount_rate)
+
+
+@mcp.tool()
+def calculate_irr(
+    cash_flows: list[float],
+) -> str:
+    """Calculate Internal Rate of Return via bisection.
+
+    IRR is the annual discount rate at which NPV = 0.
+
+    Args:
+        cash_flows: Monthly cash flows ($). First element is typically negative (capex).
+    """
+    return _irr(cash_flows)
+
+
+@mcp.tool()
+def calculate_pv10(
+    monthly_net_revenue: list[float],
+) -> str:
+    """Calculate PV10 — SEC standard present value at 10% annual discount.
+
+    PV10 = sum(NR_t / 1.10^(t/12))
+
+    Args:
+        monthly_net_revenue: Monthly net revenue ($) after royalties and opex.
+    """
+    return _pv10(monthly_net_revenue)
+
+
+@mcp.tool()
+def calculate_breakeven_price(
+    monthly_production_bbl: list[float],
+    monthly_opex: float,
+    capex: float,
+    discount_rate: float = 0.10,
+    royalty_pct: float = 0.125,
+    months: int | None = None,
+) -> str:
+    """Calculate breakeven oil price — minimum price for NPV = 0.
+
+    Uses bisection to find the oil price at which discounted net cash flow equals zero.
+
+    Args:
+        monthly_production_bbl: Monthly oil production (bbl) per period.
+        monthly_opex: Monthly operating expense ($).
+        capex: Total capital expenditure ($).
+        discount_rate: Annual discount rate. Default 0.10.
+        royalty_pct: Royalty fraction (0-1). Default 0.125.
+        months: Number of months to evaluate (default: length of production array).
+    """
+    return _breakeven_price(monthly_production_bbl, monthly_opex, capex,
+                            discount_rate, royalty_pct, months)
+
+
+@mcp.tool()
+def calculate_operating_netback(
+    oil_price: float,
+    gas_price: float,
+    oil_rate_bpd: float,
+    gas_rate_mcfd: float,
+    opex_per_boe: float,
+    royalty_pct: float = 0.125,
+    transport_per_boe: float = 0.0,
+) -> str:
+    """Calculate operating netback per BOE.
+
+    Revenue - royalties - opex - transport per BOE. Gas at 6 Mcf/BOE.
+
+    Args:
+        oil_price: Oil price ($/bbl).
+        gas_price: Gas price ($/Mcf).
+        oil_rate_bpd: Oil production rate (bbl/day).
+        gas_rate_mcfd: Gas production rate (Mcf/day).
+        opex_per_boe: Operating expense per BOE ($/BOE).
+        royalty_pct: Royalty fraction (0-1). Default 0.125.
+        transport_per_boe: Transportation cost per BOE ($/BOE). Default 0.0.
+    """
+    return _operating_netback(oil_price, gas_price, oil_rate_bpd, gas_rate_mcfd,
+                              opex_per_boe, royalty_pct, transport_per_boe)
+
+
+@mcp.tool()
+def calculate_payout_period(
+    cash_flows: list[float],
+) -> str:
+    """Calculate payout period — months to recover initial investment.
+
+    Payout is the first month where cumulative cash flow >= 0.
+
+    Args:
+        cash_flows: Monthly cash flows ($). First element is typically negative (capex).
+    """
+    return _payout_period(cash_flows)
+
+
+@mcp.tool()
+def calculate_price_sensitivity(
+    monthly_oil_bbl: list[float],
+    monthly_gas_mcf: list[float],
+    monthly_water_bbl: list[float],
+    opex_monthly: float,
+    capex: float,
+    price_scenarios: list[dict[str, float]],
+    discount_rate: float = 0.10,
+    royalty_pct: float = 0.125,
+) -> str:
+    """Calculate NPV across multiple price scenarios for sensitivity/tornado charts.
+
+    Args:
+        monthly_oil_bbl: Monthly oil production (bbl) per period.
+        monthly_gas_mcf: Monthly gas production (Mcf) per period.
+        monthly_water_bbl: Monthly water production (bbl) per period.
+        opex_monthly: Monthly operating expense ($).
+        capex: Total capital expenditure ($).
+        price_scenarios: List of dicts with 'oil_price' and 'gas_price'.
+        discount_rate: Annual discount rate. Default 0.10.
+        royalty_pct: Royalty fraction (0-1). Default 0.125.
+    """
+    return _price_sensitivity(monthly_oil_bbl, monthly_gas_mcf, monthly_water_bbl,
+                              opex_monthly, capex, price_scenarios,
+                              discount_rate, royalty_pct)
+
+
+# --- Production Engineering Tools ---
+
+
+@mcp.tool()
+def calculate_beggs_brill(
+    flow_rate_bpd: float,
+    gor_scf_bbl: float,
+    water_cut: float,
+    oil_api: float,
+    gas_sg: float,
+    pipe_id_in: float,
+    pipe_length_ft: float,
+    inclination_deg: float,
+    wellhead_pressure_psi: float,
+    temperature_f: float,
+) -> str:
+    """Beggs & Brill (1973) multiphase pressure drop in pipes.
+
+    The most widely used multiphase flow correlation. Determines flow pattern,
+    calculates liquid holdup, friction factor, and pressure gradient including
+    elevation, friction, and acceleration terms.
+
+    Args:
+        flow_rate_bpd: Total liquid flow rate in bbl/day.
+        gor_scf_bbl: Gas-oil ratio in scf/bbl.
+        water_cut: Water cut as fraction (0-1).
+        oil_api: Oil API gravity.
+        gas_sg: Gas specific gravity (air = 1.0).
+        pipe_id_in: Pipe inner diameter in inches.
+        pipe_length_ft: Pipe length in feet.
+        inclination_deg: Pipe inclination from horizontal (-90 to 90 degrees).
+        wellhead_pressure_psi: Wellhead (outlet) pressure in psi.
+        temperature_f: Average flowing temperature in degrees F.
+    """
+    return _beggs_brill(
+        flow_rate_bpd, gor_scf_bbl, water_cut, oil_api, gas_sg,
+        pipe_id_in, pipe_length_ft, inclination_deg,
+        wellhead_pressure_psi, temperature_f,
+    )
+
+
+@mcp.tool()
+def calculate_turner_critical(
+    wellhead_pressure_psi: float,
+    wellhead_temp_f: float,
+    gas_sg: float,
+    condensate_sg: float | None = None,
+    water_sg: float = 1.07,
+    tubing_id_in: float = 2.441,
+    current_rate_mcfd: float | None = None,
+) -> str:
+    """Turner et al. (1969) critical rate for gas well liquid unloading.
+
+    Calculates the minimum gas velocity and flow rate needed to continuously
+    lift liquids from a gas well using the droplet model.
+
+    Args:
+        wellhead_pressure_psi: Wellhead flowing pressure in psi.
+        wellhead_temp_f: Wellhead temperature in degrees F.
+        gas_sg: Gas specific gravity (air = 1.0).
+        condensate_sg: Condensate specific gravity (optional).
+        water_sg: Water specific gravity. Default 1.07.
+        tubing_id_in: Tubing inner diameter in inches. Default 2.441.
+        current_rate_mcfd: Current gas rate in Mcf/d for status check (optional).
+    """
+    return _turner_critical(
+        wellhead_pressure_psi, wellhead_temp_f, gas_sg,
+        condensate_sg, water_sg, tubing_id_in, current_rate_mcfd,
+    )
+
+
+@mcp.tool()
+def calculate_coleman_critical(
+    wellhead_pressure_psi: float,
+    wellhead_temp_f: float,
+    gas_sg: float,
+    tubing_id_in: float = 2.441,
+    current_rate_mcfd: float | None = None,
+) -> str:
+    """Coleman et al. (1991) critical rate for liquid loading (20% below Turner).
+
+    Recommended for low-pressure gas wells (< ~500 psi wellhead pressure).
+
+    Args:
+        wellhead_pressure_psi: Wellhead flowing pressure in psi.
+        wellhead_temp_f: Wellhead temperature in degrees F.
+        gas_sg: Gas specific gravity (air = 1.0).
+        tubing_id_in: Tubing inner diameter in inches. Default 2.441.
+        current_rate_mcfd: Current gas rate in Mcf/d for status check (optional).
+    """
+    return _coleman_critical(
+        wellhead_pressure_psi, wellhead_temp_f, gas_sg,
+        tubing_id_in, current_rate_mcfd,
+    )
+
+
+@mcp.tool()
+def calculate_hydrate_temp(
+    pressure_psi: float,
+    gas_sg: float,
+) -> str:
+    """Estimate hydrate formation temperature using gas-gravity method (Katz chart).
+
+    Args:
+        pressure_psi: System pressure in psi.
+        gas_sg: Gas specific gravity (air = 1.0, range 0.55-1.0).
+    """
+    return _hydrate_temp(pressure_psi, gas_sg)
+
+
+@mcp.tool()
+def calculate_hydrate_inhibitor(
+    hydrate_temp_f: float,
+    operating_temp_f: float,
+    water_rate_bwpd: float,
+    inhibitor: str = "methanol",
+) -> str:
+    """Calculate hydrate inhibitor injection rate using Hammerschmidt equation.
+
+    Supports methanol, MEG, and ethanol.
+
+    Args:
+        hydrate_temp_f: Hydrate formation temperature in degrees F.
+        operating_temp_f: Target operating temperature in degrees F.
+        water_rate_bwpd: Water production rate in bbl/day.
+        inhibitor: Inhibitor type - 'methanol', 'meg', or 'ethanol'.
+    """
+    return _hydrate_inhibitor(hydrate_temp_f, operating_temp_f, water_rate_bwpd, inhibitor)
+
+
+@mcp.tool()
+def calculate_erosional_vel(
+    density_mix_lb_ft3: float,
+    c_factor: float = 100.0,
+) -> str:
+    """Calculate erosional velocity per API RP 14E (v_e = C / sqrt(rho_mix)).
+
+    Args:
+        density_mix_lb_ft3: Mixture density in lb/ft3.
+        c_factor: Erosional constant. Default 100. Use 125 for intermittent,
+            150-200 for corrosion-resistant alloys.
+    """
+    return _erosional_velocity(density_mix_lb_ft3, c_factor)
+
+
+@mcp.tool()
+def calculate_choke_flow(
+    upstream_pressure_psi: float,
+    choke_size_64ths: float,
+    gor_scf_bbl: float,
+    oil_api: float,
+    water_cut: float = 0.0,
+    gas_sg: float = 0.65,
+) -> str:
+    """Calculate flow rate through a choke using Gilbert correlation (1954).
+
+    q = P * S^1.89 / (435 * GLR^0.546). Valid for critical (sonic) flow only.
+
+    Args:
+        upstream_pressure_psi: Upstream pressure in psi.
+        choke_size_64ths: Choke bean size in 64ths of an inch.
+        gor_scf_bbl: Gas-oil ratio in scf/bbl.
+        oil_api: Oil API gravity.
+        water_cut: Water cut as fraction (0-1). Default 0.0.
+        gas_sg: Gas specific gravity. Default 0.65.
+    """
+    return _choke_flow(
+        upstream_pressure_psi, choke_size_64ths, gor_scf_bbl,
+        oil_api, water_cut, gas_sg,
+    )
+
+
 # --- Unit Conversion Tools ---
 
 
@@ -682,6 +1403,134 @@ def convert_oilfield_units(
 def list_oilfield_units() -> str:
     """List all supported oilfield unit categories and their units."""
     return _list_units()
+
+
+# --- Trajectory / Directional Survey Tools (optional: requires welleng) ---
+
+
+if _HAS_TRAJECTORY:
+
+    @mcp.tool()
+    def calculate_well_survey(
+        md: list[float],
+        inclination: list[float],
+        azimuth: list[float],
+        unit: str = "feet",
+    ) -> str:
+        """Calculate well trajectory using minimum curvature method.
+
+        Takes survey station data (MD, inclination, azimuth) and returns
+        computed North, East, TVD, and dogleg severity at each station.
+
+        Args:
+            md: List of measured depths (ft or m).
+            inclination: List of inclinations (degrees from vertical, 0-180).
+            azimuth: List of azimuths (degrees from north, 0-360).
+            unit: Depth unit — 'feet' or 'meters'. Default 'feet'.
+        """
+        return _calculate_survey(md, inclination, azimuth, unit)
+
+    @mcp.tool()
+    def calculate_dogleg_severity(
+        md1: float,
+        inc1: float,
+        azi1: float,
+        md2: float,
+        inc2: float,
+        azi2: float,
+        course_length_unit: str = "feet",
+    ) -> str:
+        """Calculate dogleg severity between two survey stations.
+
+        Returns DLS in deg/100ft (or deg/30m for metric).
+
+        Args:
+            md1: Measured depth at station 1.
+            inc1: Inclination at station 1 (degrees).
+            azi1: Azimuth at station 1 (degrees).
+            md2: Measured depth at station 2.
+            inc2: Inclination at station 2 (degrees).
+            azi2: Azimuth at station 2 (degrees).
+            course_length_unit: 'feet' or 'meters'. Default 'feet'.
+        """
+        return _calculate_dls(md1, inc1, azi1, md2, inc2, azi2, course_length_unit)
+
+    @mcp.tool()
+    def calculate_vertical_section(
+        md: list[float],
+        inclination: list[float],
+        azimuth: list[float],
+        vs_azimuth: float = 0.0,
+        unit: str = "feet",
+    ) -> str:
+        """Project well trajectory onto a vertical section plane.
+
+        Calculates the horizontal displacement projected onto a plane at the
+        given azimuth. Standard way to view a well path in 2D cross-section.
+
+        Args:
+            md: List of measured depths.
+            inclination: List of inclinations (degrees).
+            azimuth: List of azimuths (degrees).
+            vs_azimuth: Vertical section azimuth in degrees (0 = North). Default 0.
+            unit: Depth unit — 'feet' or 'meters'. Default 'feet'.
+        """
+        return _calculate_vs(md, inclination, azimuth, vs_azimuth, unit)
+
+    @mcp.tool()
+    def calculate_wellbore_tortuosity(
+        md: list[float],
+        inclination: list[float],
+        azimuth: list[float],
+        unit: str = "feet",
+    ) -> str:
+        """Calculate wellbore tortuosity index from survey data.
+
+        Tortuosity measures how much the wellbore deviates from an ideal path.
+        Higher values indicate more tortuous wellpath, impacting drilling and
+        production operations.
+
+        Args:
+            md: List of measured depths.
+            inclination: List of inclinations (degrees).
+            azimuth: List of azimuths (degrees).
+            unit: Depth unit — 'feet' or 'meters'. Default 'feet'.
+        """
+        return _calculate_tortuosity(md, inclination, azimuth, unit)
+
+    @mcp.tool()
+    def check_well_anticollision(
+        well1_md: list[float],
+        well1_inc: list[float],
+        well1_azi: list[float],
+        well2_md: list[float],
+        well2_inc: list[float],
+        well2_azi: list[float],
+        well2_start_north: float = 0.0,
+        well2_start_east: float = 0.0,
+        unit: str = "feet",
+    ) -> str:
+        """Check separation between two wells at closest approach.
+
+        Computes center-to-center distance between two well trajectories
+        and identifies the closest approach point.
+
+        Args:
+            well1_md: Measured depths for reference well.
+            well1_inc: Inclinations for reference well (degrees).
+            well1_azi: Azimuths for reference well (degrees).
+            well2_md: Measured depths for offset well.
+            well2_inc: Inclinations for offset well (degrees).
+            well2_azi: Azimuths for offset well (degrees).
+            well2_start_north: Offset well surface location north of reference.
+            well2_start_east: Offset well surface location east of reference.
+            unit: Depth unit — 'feet' or 'meters'. Default 'feet'.
+        """
+        return _check_anticollision(
+            well1_md, well1_inc, well1_azi,
+            well2_md, well2_inc, well2_azi,
+            well2_start_north, well2_start_east, unit,
+        )
 
 
 # --- Resources ---
