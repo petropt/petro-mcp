@@ -38,6 +38,27 @@ from petro_mcp.tools.petrophysics import (
     calculate_sonic_porosity as _sonic_porosity,
     calculate_vshale as _vshale,
 )
+from petro_mcp.tools.reservoir import (
+    calculate_havlena_odeh as _havlena_odeh,
+    calculate_pz_analysis as _pz_analysis,
+    calculate_radius_of_investigation as _radius_of_investigation,
+    calculate_recovery_factor as _recovery_factor,
+    calculate_volumetric_ogip as _volumetric_ogip,
+    calculate_volumetric_ooip as _volumetric_ooip,
+)
+from petro_mcp.tools.drilling import (
+    calculate_annular_velocity as _annular_velocity,
+    calculate_bit_pressure_drop as _bit_pressure_drop,
+    calculate_burst_pressure as _burst_pressure,
+    calculate_collapse_pressure as _collapse_pressure,
+    calculate_ecd as _ecd,
+    calculate_formation_pressure_gradient as _fpg,
+    calculate_hydrostatic_pressure as _hydrostatic,
+    calculate_icp_fcp as _icp_fcp,
+    calculate_kill_mud_weight as _kill_mw,
+    calculate_maasp as _maasp,
+    calculate_nozzle_tfa as _nozzle_tfa,
+)
 from petro_mcp.tools.units import convert_units as _convert_units, list_units as _list_units
 
 mcp = FastMCP(
@@ -311,6 +332,158 @@ def run_nodal_analysis(
         fluid_gradient: Fluid pressure gradient in psi/ft (default 0.35).
     """
     return nodal_analysis(reservoir_pressure, PI, tubing_size, wellhead_pressure, depth, fluid_gradient)
+
+
+# --- Reservoir Engineering / Material Balance Tools ---
+
+
+@mcp.tool()
+def pz_analysis(
+    pressures: list[float],
+    cumulative_gas: list[float],
+    abandonment_pressure: float | None = None,
+) -> str:
+    """Gas material balance: P/Z vs cumulative gas production analysis.
+
+    Fits a linear P/Z vs Gp trend to estimate Original Gas In Place (OGIP).
+    The #1 reservoir engineering spreadsheet calculation.
+
+    Args:
+        pressures: Reservoir pressures (or P/Z values) in psi at each time step.
+        cumulative_gas: Cumulative gas production in Bcf at each pressure.
+        abandonment_pressure: Optional abandonment pressure in psi for
+            recoverable gas estimate.
+    """
+    return _pz_analysis(pressures, cumulative_gas, abandonment_pressure)
+
+
+@mcp.tool()
+def havlena_odeh(
+    pressures: list[float],
+    np_values: list[float],
+    rp_values: list[float],
+    wp_values: list[float],
+    wi_values: list[float],
+    bo_values: list[float],
+    rs_values: list[float],
+    bg_values: list[float],
+    bw_values: list[float],
+    boi: float,
+    rsi: float,
+    bgi: float,
+    cf: float | None = None,
+    swi: float | None = None,
+) -> str:
+    """Oil material balance using Havlena-Odeh straight-line method (1963).
+
+    Identifies drive mechanism (depletion, gas cap, water drive) and estimates
+    Original Oil In Place (OOIP). Returns F vs Et plot data for diagnostics.
+
+    Args:
+        pressures: Reservoir pressures at each time step (psi).
+        np_values: Cumulative oil production at each step (STB).
+        rp_values: Cumulative producing GOR at each step (scf/STB).
+        wp_values: Cumulative water production at each step (STB).
+        wi_values: Cumulative water injection at each step (STB).
+        bo_values: Oil FVF at each pressure (bbl/STB).
+        rs_values: Solution GOR at each pressure (scf/STB).
+        bg_values: Gas FVF at each pressure (bbl/scf).
+        bw_values: Water FVF at each pressure (bbl/STB).
+        boi: Initial oil FVF (bbl/STB).
+        rsi: Initial solution GOR (scf/STB).
+        bgi: Initial gas FVF (bbl/scf).
+        cf: Formation compressibility (1/psi). Optional.
+        swi: Initial water saturation (fraction, 0-1). Optional.
+    """
+    return _havlena_odeh(
+        pressures, np_values, rp_values, wp_values, wi_values,
+        bo_values, rs_values, bg_values, bw_values,
+        boi, rsi, bgi, cf, swi,
+    )
+
+
+@mcp.tool()
+def volumetric_ooip(
+    area_acres: float,
+    thickness_ft: float,
+    porosity: float,
+    sw: float,
+    bo: float,
+) -> str:
+    """Calculate volumetric Original Oil In Place (OOIP).
+
+    OOIP = 7758 * A * h * phi * (1-Sw) / Bo (STB)
+
+    Args:
+        area_acres: Reservoir area in acres.
+        thickness_ft: Net pay thickness in feet.
+        porosity: Porosity (fraction, 0-1).
+        sw: Water saturation (fraction, 0-1).
+        bo: Oil formation volume factor (bbl/STB).
+    """
+    return _volumetric_ooip(area_acres, thickness_ft, porosity, sw, bo)
+
+
+@mcp.tool()
+def volumetric_ogip(
+    area_acres: float,
+    thickness_ft: float,
+    porosity: float,
+    sw: float,
+    bg: float,
+) -> str:
+    """Calculate volumetric Original Gas In Place (OGIP).
+
+    OGIP = 43560 * A * h * phi * (1-Sw) / Bg (scf)
+
+    Args:
+        area_acres: Reservoir area in acres.
+        thickness_ft: Net pay thickness in feet.
+        porosity: Porosity (fraction, 0-1).
+        sw: Water saturation (fraction, 0-1).
+        bg: Gas formation volume factor (ft³/scf).
+    """
+    return _volumetric_ogip(area_acres, thickness_ft, porosity, sw, bg)
+
+
+@mcp.tool()
+def recovery_factor(
+    ooip_or_ogip: float,
+    cumulative_production: float,
+) -> str:
+    """Calculate recovery factor (RF = Np/N or Gp/G).
+
+    Works for both oil and gas — just use consistent units.
+
+    Args:
+        ooip_or_ogip: Original oil or gas in place.
+        cumulative_production: Cumulative production (same units).
+    """
+    return _recovery_factor(ooip_or_ogip, cumulative_production)
+
+
+@mcp.tool()
+def radius_of_investigation(
+    permeability_md: float,
+    time_hours: float,
+    porosity: float,
+    viscosity_cp: float,
+    total_compressibility: float,
+) -> str:
+    """Calculate radius of investigation for a well test.
+
+    r_inv = 0.029 * sqrt(k*t / (phi*mu*ct)), from Lee (1982).
+
+    Args:
+        permeability_md: Formation permeability in millidarcies.
+        time_hours: Elapsed time in hours.
+        porosity: Porosity (fraction, 0-1).
+        viscosity_cp: Fluid viscosity in centipoise.
+        total_compressibility: Total system compressibility in 1/psi.
+    """
+    return _radius_of_investigation(
+        permeability_md, time_hours, porosity, viscosity_cp, total_compressibility,
+    )
 
 
 # --- PVT Tools ---
@@ -651,6 +824,168 @@ def calculate_hpt(
         ntg: Net-to-gross ratio (0-1). Default 1.0.
     """
     return _hpt(thickness, phi, sw, ntg)
+
+
+# --- Drilling Engineering Tools ---
+
+
+@mcp.tool()
+def calculate_hydrostatic_pressure(mud_weight_ppg: float, tvd_ft: float) -> str:
+    """Calculate hydrostatic pressure (P = 0.052 * MW * TVD).
+
+    Args:
+        mud_weight_ppg: Mud weight in pounds per gallon (ppg).
+        tvd_ft: True vertical depth in feet.
+    """
+    return _hydrostatic(mud_weight_ppg, tvd_ft)
+
+
+@mcp.tool()
+def calculate_ecd(
+    mud_weight_ppg: float, annular_pressure_loss_psi: float, tvd_ft: float,
+) -> str:
+    """Calculate equivalent circulating density (ECD = MW + APL / (0.052 * TVD)).
+
+    Args:
+        mud_weight_ppg: Static mud weight (ppg).
+        annular_pressure_loss_psi: Annular pressure loss (psi).
+        tvd_ft: True vertical depth (ft).
+    """
+    return _ecd(mud_weight_ppg, annular_pressure_loss_psi, tvd_ft)
+
+
+@mcp.tool()
+def calculate_formation_pressure_gradient(pressure_psi: float, tvd_ft: float) -> str:
+    """Calculate formation pressure gradient as ppg equivalent (FPG = P / (0.052 * TVD)).
+
+    Args:
+        pressure_psi: Formation pressure (psi).
+        tvd_ft: True vertical depth (ft).
+    """
+    return _fpg(pressure_psi, tvd_ft)
+
+
+@mcp.tool()
+def calculate_kill_mud_weight(
+    sidp_psi: float, original_mud_weight_ppg: float, tvd_ft: float,
+) -> str:
+    """Calculate kill mud weight for well control (Kill MW = MW + SIDP / (0.052 * TVD)).
+
+    Args:
+        sidp_psi: Shut-in drill pipe pressure (psi).
+        original_mud_weight_ppg: Original mud weight (ppg).
+        tvd_ft: True vertical depth (ft).
+    """
+    return _kill_mw(sidp_psi, original_mud_weight_ppg, tvd_ft)
+
+
+@mcp.tool()
+def calculate_icp_fcp(
+    sidp_psi: float, circulating_pressure_psi: float,
+    kill_mud_weight_ppg: float, original_mud_weight_ppg: float,
+) -> str:
+    """Calculate Initial and Final Circulating Pressures for well kill operations.
+
+    ICP = SIDP + slow circulating pressure.
+    FCP = SCP * (Kill MW / Original MW).
+
+    Args:
+        sidp_psi: Shut-in drill pipe pressure (psi).
+        circulating_pressure_psi: Slow circulating pressure (psi).
+        kill_mud_weight_ppg: Kill mud weight (ppg).
+        original_mud_weight_ppg: Original mud weight (ppg).
+    """
+    return _icp_fcp(sidp_psi, circulating_pressure_psi, kill_mud_weight_ppg, original_mud_weight_ppg)
+
+
+@mcp.tool()
+def calculate_maasp(
+    fracture_gradient_ppg: float, mud_weight_ppg: float, shoe_tvd_ft: float,
+) -> str:
+    """Calculate Maximum Allowable Annular Surface Pressure.
+
+    MAASP = (FG - MW) * 0.052 * shoe TVD.
+
+    Args:
+        fracture_gradient_ppg: Fracture gradient at shoe (ppg).
+        mud_weight_ppg: Current mud weight (ppg).
+        shoe_tvd_ft: Casing shoe TVD (ft).
+    """
+    return _maasp(fracture_gradient_ppg, mud_weight_ppg, shoe_tvd_ft)
+
+
+@mcp.tool()
+def calculate_annular_velocity(
+    flow_rate_gpm: float, hole_diameter_in: float, pipe_od_in: float,
+) -> str:
+    """Calculate annular velocity (AV = 24.51 * Q / (Dh^2 - Dp^2)).
+
+    Args:
+        flow_rate_gpm: Flow rate in gallons per minute.
+        hole_diameter_in: Hole or casing ID (inches).
+        pipe_od_in: Pipe or drill string OD (inches).
+    """
+    return _annular_velocity(flow_rate_gpm, hole_diameter_in, pipe_od_in)
+
+
+@mcp.tool()
+def calculate_nozzle_tfa(nozzle_sizes: list[int]) -> str:
+    """Calculate total flow area (TFA) of bit nozzles.
+
+    TFA = sum(pi/4 * (d/32)^2) for each nozzle size in 32nds of an inch.
+
+    Args:
+        nozzle_sizes: List of nozzle sizes in 32nds of an inch (e.g. [12, 12, 12]).
+    """
+    return _nozzle_tfa(nozzle_sizes)
+
+
+@mcp.tool()
+def calculate_bit_pressure_drop(
+    flow_rate_gpm: float, mud_weight_ppg: float, tfa_sqin: float,
+) -> str:
+    """Calculate pressure drop across the bit (dP = MW * Q^2 / (12032 * TFA^2)).
+
+    Args:
+        flow_rate_gpm: Flow rate in gallons per minute.
+        mud_weight_ppg: Mud weight (ppg).
+        tfa_sqin: Total flow area of nozzles (in^2).
+    """
+    return _bit_pressure_drop(flow_rate_gpm, mud_weight_ppg, tfa_sqin)
+
+
+@mcp.tool()
+def calculate_burst_pressure(
+    yield_strength_psi: float, wall_thickness_in: float, od_in: float,
+) -> str:
+    """Calculate internal burst pressure using Barlow's formula with API 12.5% tolerance.
+
+    P_burst = 0.875 * 2 * Fy * t / OD.
+
+    Args:
+        yield_strength_psi: Minimum yield strength (psi).
+        wall_thickness_in: Nominal wall thickness (inches).
+        od_in: Outer diameter (inches).
+    """
+    return _burst_pressure(yield_strength_psi, wall_thickness_in, od_in)
+
+
+@mcp.tool()
+def calculate_collapse_pressure(
+    od_in: float, wall_thickness_in: float, yield_strength_psi: float, grade: str = "",
+) -> str:
+    """Calculate collapse pressure rating per API 5C3.
+
+    Determines regime (yield, plastic, transition, elastic) from D/t ratio
+    and yield strength, then applies the corresponding API formula.
+
+    Args:
+        od_in: Casing outer diameter (inches).
+        wall_thickness_in: Wall thickness (inches).
+        yield_strength_psi: Minimum yield strength (psi).
+        grade: Optional API grade label (e.g. 'N-80') for reference.
+    """
+    return _collapse_pressure(od_in, wall_thickness_in, yield_strength_psi, grade)
 
 
 # --- Unit Conversion Tools ---
