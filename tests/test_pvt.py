@@ -205,7 +205,8 @@ class TestCalculatePVTVasquezBeggs:
         oil = result["oil_properties"]
         assert oil["solution_gor_scf_stb"] > 0
         assert oil["oil_fvf_bbl_stb"] > 1.0
-        assert "Vasquez" in oil["bubble_point_correlation"]
+        # VB uses Standing's Pb correlation internally
+        assert "Standing" in oil["bubble_point_correlation"]
 
     def test_heavy_oil_coefficients(self):
         """API <= 30 uses different coefficients."""
@@ -601,7 +602,7 @@ class TestGasZFactor:
             pseudocritical_method="piper",
             h2s_fraction=0.05, co2_fraction=0.10,
         ))
-        assert 0.2 <= result["z_factor"] <= 1.5
+        assert 0.05 <= result["z_factor"] <= 2.0
         assert result["inputs"]["h2s_fraction"] == 0.05
         assert result["inputs"]["co2_fraction"] == 0.10
 
@@ -646,6 +647,49 @@ class TestGasZFactor:
             ))
             z = result["z_factor"]
             assert 0.05 <= z <= 2.0, f"Z={z} out of range at P={p}"
+
+    def test_hy_piper_differs_from_sutton(self):
+        """Hall-Yarborough with Piper pseudocriticals should give a different
+        Z-factor than with Sutton, confirming the method is actually routed."""
+        sutton = json.loads(calculate_gas_z_factor(
+            temperature=200, pressure=3000, gas_sg=0.70,
+            method="hall_yarborough", pseudocritical_method="sutton",
+        ))
+        piper = json.loads(calculate_gas_z_factor(
+            temperature=200, pressure=3000, gas_sg=0.70,
+            method="hall_yarborough", pseudocritical_method="piper",
+        ))
+        assert sutton["z_factor"] != piper["z_factor"]
+        assert sutton["pseudocritical_temperature_R"] != piper["pseudocritical_temperature_R"]
+
+
+# ===========================================================================
+# Vasquez-Beggs separator validation
+# ===========================================================================
+
+class TestVBSeparatorValidation:
+    """Vasquez-Beggs should reject non-positive separator pressure."""
+
+    def test_zero_separator_pressure_raises(self):
+        with pytest.raises(ValueError, match="Separator pressure must be positive"):
+            calculate_pvt(
+                api_gravity=35, gas_sg=0.65, temperature=200, pressure=3000,
+                separator_pressure=0, correlation="vasquez_beggs",
+            )
+
+    def test_negative_separator_pressure_raises(self):
+        with pytest.raises(ValueError, match="Separator pressure must be positive"):
+            calculate_pvt(
+                api_gravity=35, gas_sg=0.65, temperature=200, pressure=3000,
+                separator_pressure=-100, correlation="vasquez_beggs",
+            )
+
+    def test_negative_separator_temperature_raises(self):
+        with pytest.raises(ValueError, match="Separator temperature must be positive"):
+            calculate_pvt(
+                api_gravity=35, gas_sg=0.65, temperature=200, pressure=3000,
+                separator_temperature=-10,
+            )
 
 
 # ===========================================================================

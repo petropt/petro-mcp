@@ -313,6 +313,11 @@ def forecast_advanced_decline(
     Returns:
         JSON string with forecast rates, cumulative production, and EUR.
     """
+    if forecast_months < 1:
+        raise ValueError("forecast_months must be >= 1")
+    if economic_limit < 0:
+        raise ValueError("economic_limit must be non-negative")
+
     if model not in _MODEL_CLASSES:
         raise ValueError(
             f"Unknown model: {model}. Must be one of: {list(_MODEL_CLASSES.keys())}"

@@ -578,8 +578,6 @@ def _piper_mccain_corredor_pseudocritical(
     Returns:
         Tuple of (Tpc in °R, Ppc in psia).
     """
-    # Piper-McCain-Corredor coefficients for Tpc
-    alpha_t = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     # J parameter (Tpc / Ppc)
     j = (
         0.11582
@@ -626,6 +624,8 @@ def _hall_yarborough_z(
     temperature: float,
     pressure: float,
     gas_sg: float,
+    tpc: float | None = None,
+    ppc: float | None = None,
 ) -> float:
     """Gas Z-factor using the Hall-Yarborough method (1973).
 
@@ -636,11 +636,14 @@ def _hall_yarborough_z(
         temperature: Temperature in °F.
         pressure: Pressure in psi.
         gas_sg: Gas specific gravity.
+        tpc: Pseudocritical temperature in °R (computed via Sutton if None).
+        ppc: Pseudocritical pressure in psia (computed via Sutton if None).
 
     Returns:
         Gas compressibility factor (Z).
     """
-    tpc, ppc = _sutton_pseudocritical(gas_sg)
+    if tpc is None or ppc is None:
+        tpc, ppc = _sutton_pseudocritical(gas_sg)
     t_rankine = temperature + 459.67
     t_pr = t_rankine / tpc
     p_pr = pressure / ppc
@@ -944,8 +947,6 @@ def _mccain_brine_viscosity(
     # mu_w = A * T^B  (T in °F)
     # A and B from regression of water viscosity data
     t = temperature
-    a = 109.574 - 8.40564 * t + 0.313314 * t**2 + 8.72213e-4 * t**3
-    # The above gives log10(mu_w) * T form. Use simpler well-known form:
     # Van Wingen (1950) / McCain tabulation:
     # mu_w = exp(1.003 - 1.479e-2*T + 1.982e-5*T^2) for T in °F
     mu_w = math.exp(1.003 - 1.479e-2 * t + 1.982e-5 * t**2)
@@ -1131,6 +1132,11 @@ def calculate_pvt(
     """
     _validate_pvt_inputs(api_gravity, gas_sg, temperature, pressure)
 
+    if separator_pressure <= 0:
+        raise ValueError("Separator pressure must be positive (psi)")
+    if separator_temperature <= 0:
+        raise ValueError("Separator temperature must be positive (°F)")
+
     valid_correlations = ("standing", "vasquez_beggs", "petrosky_farshad")
     if correlation not in valid_correlations:
         raise ValueError(
@@ -1148,17 +1154,20 @@ def calculate_pvt(
             rs, temperature, api_gravity, gas_sg, separator_pressure
         )
         oil_corr_label = "Vasquez and Beggs (1980)"
+        pb_corr_label = "Standing (1947)"
     elif correlation == "petrosky_farshad":
         rs = _petrosky_farshad_rs(pressure, temperature, api_gravity, gas_sg)
         pb = _petrosky_farshad_pb(rs, temperature, api_gravity, gas_sg)
         bo = _petrosky_farshad_bo(rs, temperature, api_gravity, gas_sg)
         oil_corr_label = "Petrosky and Farshad (1993)"
+        pb_corr_label = oil_corr_label
     else:
         # Standing (default)
         rs = _standing_rs(pressure, temperature, api_gravity, gas_sg)
         pb = _standing_pb(rs, temperature, api_gravity, gas_sg)
         bo = _standing_bo(rs, temperature, api_gravity, gas_sg)
         oil_corr_label = "Standing (1947)"
+        pb_corr_label = oil_corr_label
 
     # If pressure > Pb, oil is undersaturated: Rs is fixed at Rs(Pb)
     if pressure >= pb:
@@ -1217,7 +1226,7 @@ def calculate_pvt(
         },
         "oil_properties": {
             "bubble_point_pressure_psi": round(pb, 1),
-            "bubble_point_correlation": oil_corr_label,
+            "bubble_point_correlation": pb_corr_label,
             "solution_gor_scf_stb": round(rs, 1),
             "solution_gor_correlation": oil_corr_label,
             "oil_fvf_bbl_stb": round(bo, 4),
@@ -1445,7 +1454,7 @@ def calculate_gas_z_factor(
         )
         z_label = "Dranchuk and Abou-Kassem (1975)"
     else:
-        z = _hall_yarborough_z(temperature, pressure, gas_sg)
+        z = _hall_yarborough_z(temperature, pressure, gas_sg, tpc=tpc, ppc=ppc)
         z_label = "Hall and Yarborough (1973)"
 
     # Gas compressibility
@@ -1462,8 +1471,8 @@ def calculate_gas_z_factor(
             pseudocritical_method, h2s_fraction, co2_fraction, n2_fraction
         )
     else:
-        z_plus = _hall_yarborough_z(temperature, pressure + dp, gas_sg)
-        z_minus = _hall_yarborough_z(temperature, max(pressure - dp, 1.0), gas_sg)
+        z_plus = _hall_yarborough_z(temperature, pressure + dp, gas_sg, tpc=tpc, ppc=ppc)
+        z_minus = _hall_yarborough_z(temperature, max(pressure - dp, 1.0), gas_sg, tpc=tpc, ppc=ppc)
     dz_dp = (z_plus - z_minus) / (2.0 * dp)
     cg = 1.0 / pressure - (1.0 / z) * dz_dp
 
