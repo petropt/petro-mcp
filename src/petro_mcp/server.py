@@ -68,7 +68,30 @@ from petro_mcp.tools.production_eng import (
     calculate_hydrate_temperature as _hydrate_temp,
     calculate_turner_critical_rate as _turner_critical,
 )
+from petro_mcp.tools.economics import (
+    calculate_breakeven_price as _breakeven_price,
+    calculate_irr as _irr,
+    calculate_npv as _npv,
+    calculate_operating_netback as _operating_netback,
+    calculate_payout_period as _payout_period,
+    calculate_price_sensitivity as _price_sensitivity,
+    calculate_pv10 as _pv10,
+    calculate_well_economics as _well_economics,
+)
 from petro_mcp.tools.units import convert_units as _convert_units, list_units as _list_units
+
+# Optional trajectory tools (require welleng)
+try:
+    from petro_mcp.tools.trajectory import (
+        calculate_survey as _calculate_survey,
+        calculate_dogleg_severity as _calculate_dls,
+        calculate_vertical_section as _calculate_vs,
+        calculate_tortuosity as _calculate_tortuosity,
+        check_anticollision as _check_anticollision,
+    )
+    _HAS_TRAJECTORY = True
+except ImportError:
+    _HAS_TRAJECTORY = False
 
 mcp = FastMCP(
     "petro-mcp",
@@ -995,6 +1018,360 @@ def calculate_collapse_pressure(
         grade: Optional API grade label (e.g. 'N-80') for reference.
     """
     return _collapse_pressure(od_in, wall_thickness_in, yield_strength_psi, grade)
+
+
+# --- Economics Tools ---
+
+
+@mcp.tool()
+def calculate_well_economics(
+    monthly_oil_bbl: list[float],
+    monthly_gas_mcf: list[float],
+    monthly_water_bbl: list[float],
+    oil_price_bbl: float,
+    gas_price_mcf: float,
+    opex_monthly: float,
+    capex: float,
+    royalty_pct: float = 0.125,
+    tax_rate: float = 0.0,
+    discount_rate: float = 0.10,
+    working_interest: float = 1.0,
+    net_revenue_interest: float = 0.875,
+) -> str:
+    """Full discounted cash flow analysis for a well.
+
+    Takes production arrays (from decline forecast) plus economic assumptions.
+    Returns NPV, IRR, payout period, profitability index, and monthly cash flows.
+
+    Args:
+        monthly_oil_bbl: Monthly oil production (bbl) for each period.
+        monthly_gas_mcf: Monthly gas production (Mcf) for each period.
+        monthly_water_bbl: Monthly water production (bbl) for each period.
+        oil_price_bbl: Oil price ($/bbl).
+        gas_price_mcf: Gas price ($/Mcf).
+        opex_monthly: Monthly operating expense ($).
+        capex: Total capital expenditure ($), applied at time 0.
+        royalty_pct: Royalty fraction (0-1). Default 0.125.
+        tax_rate: Severance/production tax rate (0-1). Default 0.0.
+        discount_rate: Annual discount rate for NPV. Default 0.10.
+        working_interest: Working interest fraction (0-1). Default 1.0.
+        net_revenue_interest: Net revenue interest fraction (0-1). Default 0.875.
+    """
+    return _well_economics(
+        monthly_oil_bbl, monthly_gas_mcf, monthly_water_bbl,
+        oil_price_bbl, gas_price_mcf, opex_monthly, capex,
+        royalty_pct, tax_rate, discount_rate, working_interest, net_revenue_interest,
+    )
+
+
+@mcp.tool()
+def calculate_npv(
+    cash_flows: list[float],
+    discount_rate: float = 0.10,
+) -> str:
+    """Calculate Net Present Value from monthly cash flows.
+
+    NPV = sum(CF_t / (1 + r/12)^t) for t = 0, 1, 2, ...
+
+    Args:
+        cash_flows: Monthly cash flows ($). First element is typically negative (capex).
+        discount_rate: Annual discount rate. Default 0.10.
+    """
+    return _npv(cash_flows, discount_rate)
+
+
+@mcp.tool()
+def calculate_irr(
+    cash_flows: list[float],
+) -> str:
+    """Calculate Internal Rate of Return via bisection.
+
+    IRR is the annual discount rate at which NPV = 0.
+
+    Args:
+        cash_flows: Monthly cash flows ($). First element is typically negative (capex).
+    """
+    return _irr(cash_flows)
+
+
+@mcp.tool()
+def calculate_pv10(
+    monthly_net_revenue: list[float],
+) -> str:
+    """Calculate PV10 — SEC standard present value at 10% annual discount.
+
+    PV10 = sum(NR_t / 1.10^(t/12))
+
+    Args:
+        monthly_net_revenue: Monthly net revenue ($) after royalties and opex.
+    """
+    return _pv10(monthly_net_revenue)
+
+
+@mcp.tool()
+def calculate_breakeven_price(
+    monthly_production_bbl: list[float],
+    monthly_opex: float,
+    capex: float,
+    discount_rate: float = 0.10,
+    royalty_pct: float = 0.125,
+    months: int | None = None,
+) -> str:
+    """Calculate breakeven oil price — minimum price for NPV = 0.
+
+    Uses bisection to find the oil price at which discounted net cash flow equals zero.
+
+    Args:
+        monthly_production_bbl: Monthly oil production (bbl) per period.
+        monthly_opex: Monthly operating expense ($).
+        capex: Total capital expenditure ($).
+        discount_rate: Annual discount rate. Default 0.10.
+        royalty_pct: Royalty fraction (0-1). Default 0.125.
+        months: Number of months to evaluate (default: length of production array).
+    """
+    return _breakeven_price(monthly_production_bbl, monthly_opex, capex,
+                            discount_rate, royalty_pct, months)
+
+
+@mcp.tool()
+def calculate_operating_netback(
+    oil_price: float,
+    gas_price: float,
+    oil_rate_bpd: float,
+    gas_rate_mcfd: float,
+    opex_per_boe: float,
+    royalty_pct: float = 0.125,
+    transport_per_boe: float = 0.0,
+) -> str:
+    """Calculate operating netback per BOE.
+
+    Revenue - royalties - opex - transport per BOE. Gas at 6 Mcf/BOE.
+
+    Args:
+        oil_price: Oil price ($/bbl).
+        gas_price: Gas price ($/Mcf).
+        oil_rate_bpd: Oil production rate (bbl/day).
+        gas_rate_mcfd: Gas production rate (Mcf/day).
+        opex_per_boe: Operating expense per BOE ($/BOE).
+        royalty_pct: Royalty fraction (0-1). Default 0.125.
+        transport_per_boe: Transportation cost per BOE ($/BOE). Default 0.0.
+    """
+    return _operating_netback(oil_price, gas_price, oil_rate_bpd, gas_rate_mcfd,
+                              opex_per_boe, royalty_pct, transport_per_boe)
+
+
+@mcp.tool()
+def calculate_payout_period(
+    cash_flows: list[float],
+) -> str:
+    """Calculate payout period — months to recover initial investment.
+
+    Payout is the first month where cumulative cash flow >= 0.
+
+    Args:
+        cash_flows: Monthly cash flows ($). First element is typically negative (capex).
+    """
+    return _payout_period(cash_flows)
+
+
+@mcp.tool()
+def calculate_price_sensitivity(
+    monthly_oil_bbl: list[float],
+    monthly_gas_mcf: list[float],
+    monthly_water_bbl: list[float],
+    opex_monthly: float,
+    capex: float,
+    price_scenarios: list[dict[str, float]],
+    discount_rate: float = 0.10,
+    royalty_pct: float = 0.125,
+) -> str:
+    """Calculate NPV across multiple price scenarios for sensitivity/tornado charts.
+
+    Args:
+        monthly_oil_bbl: Monthly oil production (bbl) per period.
+        monthly_gas_mcf: Monthly gas production (Mcf) per period.
+        monthly_water_bbl: Monthly water production (bbl) per period.
+        opex_monthly: Monthly operating expense ($).
+        capex: Total capital expenditure ($).
+        price_scenarios: List of dicts with 'oil_price' and 'gas_price'.
+        discount_rate: Annual discount rate. Default 0.10.
+        royalty_pct: Royalty fraction (0-1). Default 0.125.
+    """
+    return _price_sensitivity(monthly_oil_bbl, monthly_gas_mcf, monthly_water_bbl,
+                              opex_monthly, capex, price_scenarios,
+                              discount_rate, royalty_pct)
+
+
+# --- Production Engineering Tools ---
+
+
+@mcp.tool()
+def calculate_beggs_brill(
+    flow_rate_bpd: float,
+    gor_scf_bbl: float,
+    water_cut: float,
+    oil_api: float,
+    gas_sg: float,
+    pipe_id_in: float,
+    pipe_length_ft: float,
+    inclination_deg: float,
+    wellhead_pressure_psi: float,
+    temperature_f: float,
+) -> str:
+    """Beggs & Brill (1973) multiphase pressure drop in pipes.
+
+    The most widely used multiphase flow correlation. Determines flow pattern,
+    calculates liquid holdup, friction factor, and pressure gradient including
+    elevation, friction, and acceleration terms.
+
+    Args:
+        flow_rate_bpd: Total liquid flow rate in bbl/day.
+        gor_scf_bbl: Gas-oil ratio in scf/bbl.
+        water_cut: Water cut as fraction (0-1).
+        oil_api: Oil API gravity.
+        gas_sg: Gas specific gravity (air = 1.0).
+        pipe_id_in: Pipe inner diameter in inches.
+        pipe_length_ft: Pipe length in feet.
+        inclination_deg: Pipe inclination from horizontal (-90 to 90 degrees).
+        wellhead_pressure_psi: Wellhead (outlet) pressure in psi.
+        temperature_f: Average flowing temperature in degrees F.
+    """
+    return _beggs_brill(
+        flow_rate_bpd, gor_scf_bbl, water_cut, oil_api, gas_sg,
+        pipe_id_in, pipe_length_ft, inclination_deg,
+        wellhead_pressure_psi, temperature_f,
+    )
+
+
+@mcp.tool()
+def calculate_turner_critical(
+    wellhead_pressure_psi: float,
+    wellhead_temp_f: float,
+    gas_sg: float,
+    condensate_sg: float | None = None,
+    water_sg: float = 1.07,
+    tubing_id_in: float = 2.441,
+    current_rate_mcfd: float | None = None,
+) -> str:
+    """Turner et al. (1969) critical rate for gas well liquid unloading.
+
+    Calculates the minimum gas velocity and flow rate needed to continuously
+    lift liquids from a gas well using the droplet model.
+
+    Args:
+        wellhead_pressure_psi: Wellhead flowing pressure in psi.
+        wellhead_temp_f: Wellhead temperature in degrees F.
+        gas_sg: Gas specific gravity (air = 1.0).
+        condensate_sg: Condensate specific gravity (optional).
+        water_sg: Water specific gravity. Default 1.07.
+        tubing_id_in: Tubing inner diameter in inches. Default 2.441.
+        current_rate_mcfd: Current gas rate in Mcf/d for status check (optional).
+    """
+    return _turner_critical(
+        wellhead_pressure_psi, wellhead_temp_f, gas_sg,
+        condensate_sg, water_sg, tubing_id_in, current_rate_mcfd,
+    )
+
+
+@mcp.tool()
+def calculate_coleman_critical(
+    wellhead_pressure_psi: float,
+    wellhead_temp_f: float,
+    gas_sg: float,
+    tubing_id_in: float = 2.441,
+    current_rate_mcfd: float | None = None,
+) -> str:
+    """Coleman et al. (1991) critical rate for liquid loading (20% below Turner).
+
+    Recommended for low-pressure gas wells (< ~500 psi wellhead pressure).
+
+    Args:
+        wellhead_pressure_psi: Wellhead flowing pressure in psi.
+        wellhead_temp_f: Wellhead temperature in degrees F.
+        gas_sg: Gas specific gravity (air = 1.0).
+        tubing_id_in: Tubing inner diameter in inches. Default 2.441.
+        current_rate_mcfd: Current gas rate in Mcf/d for status check (optional).
+    """
+    return _coleman_critical(
+        wellhead_pressure_psi, wellhead_temp_f, gas_sg,
+        tubing_id_in, current_rate_mcfd,
+    )
+
+
+@mcp.tool()
+def calculate_hydrate_temp(
+    pressure_psi: float,
+    gas_sg: float,
+) -> str:
+    """Estimate hydrate formation temperature using gas-gravity method (Katz chart).
+
+    Args:
+        pressure_psi: System pressure in psi.
+        gas_sg: Gas specific gravity (air = 1.0, range 0.55-1.0).
+    """
+    return _hydrate_temp(pressure_psi, gas_sg)
+
+
+@mcp.tool()
+def calculate_hydrate_inhibitor(
+    hydrate_temp_f: float,
+    operating_temp_f: float,
+    water_rate_bwpd: float,
+    inhibitor: str = "methanol",
+) -> str:
+    """Calculate hydrate inhibitor injection rate using Hammerschmidt equation.
+
+    Supports methanol, MEG, and ethanol.
+
+    Args:
+        hydrate_temp_f: Hydrate formation temperature in degrees F.
+        operating_temp_f: Target operating temperature in degrees F.
+        water_rate_bwpd: Water production rate in bbl/day.
+        inhibitor: Inhibitor type - 'methanol', 'meg', or 'ethanol'.
+    """
+    return _hydrate_inhibitor(hydrate_temp_f, operating_temp_f, water_rate_bwpd, inhibitor)
+
+
+@mcp.tool()
+def calculate_erosional_vel(
+    density_mix_lb_ft3: float,
+    c_factor: float = 100.0,
+) -> str:
+    """Calculate erosional velocity per API RP 14E (v_e = C / sqrt(rho_mix)).
+
+    Args:
+        density_mix_lb_ft3: Mixture density in lb/ft3.
+        c_factor: Erosional constant. Default 100. Use 125 for intermittent,
+            150-200 for corrosion-resistant alloys.
+    """
+    return _erosional_velocity(density_mix_lb_ft3, c_factor)
+
+
+@mcp.tool()
+def calculate_choke_flow(
+    upstream_pressure_psi: float,
+    choke_size_64ths: float,
+    gor_scf_bbl: float,
+    oil_api: float,
+    water_cut: float = 0.0,
+    gas_sg: float = 0.65,
+) -> str:
+    """Calculate flow rate through a choke using Gilbert correlation (1954).
+
+    q = P * S^1.89 / (435 * GLR^0.546). Valid for critical (sonic) flow only.
+
+    Args:
+        upstream_pressure_psi: Upstream pressure in psi.
+        choke_size_64ths: Choke bean size in 64ths of an inch.
+        gor_scf_bbl: Gas-oil ratio in scf/bbl.
+        oil_api: Oil API gravity.
+        water_cut: Water cut as fraction (0-1). Default 0.0.
+        gas_sg: Gas specific gravity. Default 0.65.
+    """
+    return _choke_flow(
+        upstream_pressure_psi, choke_size_64ths, gor_scf_bbl,
+        oil_api, water_cut, gas_sg,
+    )
 
 
 # --- Unit Conversion Tools ---
