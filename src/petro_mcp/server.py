@@ -59,6 +59,15 @@ from petro_mcp.tools.drilling import (
     calculate_maasp as _maasp,
     calculate_nozzle_tfa as _nozzle_tfa,
 )
+from petro_mcp.tools.production_eng import (
+    calculate_beggs_brill_pressure_drop as _beggs_brill,
+    calculate_coleman_critical_rate as _coleman_critical,
+    calculate_critical_choke_flow as _choke_flow,
+    calculate_erosional_velocity as _erosional_velocity,
+    calculate_hydrate_inhibitor_dosing as _hydrate_inhibitor,
+    calculate_hydrate_temperature as _hydrate_temp,
+    calculate_turner_critical_rate as _turner_critical,
+)
 from petro_mcp.tools.units import convert_units as _convert_units, list_units as _list_units
 
 mcp = FastMCP(
