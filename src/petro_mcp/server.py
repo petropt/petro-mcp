@@ -7,10 +7,22 @@ from mcp.server.fastmcp import FastMCP
 from petro_mcp.prompts.templates import TEMPLATES
 from petro_mcp.resources.well_data import list_wells, production_summary
 from petro_mcp.tools.calculations import calculate_ip_ratio, nodal_analysis
+from petro_mcp.tools.advanced_decline import (
+    fit_duong_decline as _fit_duong,
+    fit_ple_decline as _fit_ple,
+    fit_sepd_decline as _fit_sepd,
+    forecast_advanced_decline as _forecast_advanced,
+)
 from petro_mcp.tools.decline import calculate_eur, fit_decline_curve
 from petro_mcp.tools.las import get_curve_data, get_well_header, list_curves, read_las_file
 from petro_mcp.tools.production import query_production_data
-from petro_mcp.tools.pvt import bubble_point as _bubble_point, calculate_pvt as _calculate_pvt
+from petro_mcp.tools.pvt import (
+    bubble_point as _bubble_point,
+    calculate_brine_properties as _calculate_brine,
+    calculate_gas_z_factor as _calculate_gas_z,
+    calculate_oil_compressibility as _calculate_oil_co,
+    calculate_pvt as _calculate_pvt,
+)
 from petro_mcp.tools.trends import analyze_production_trends
 from petro_mcp.tools.petrophysics import (
     calculate_archie_sw as _archie_sw,
@@ -181,6 +193,83 @@ def calculate_eur_tool(
     return calculate_eur(qi, Di, b, economic_limit, model, Dmin=Dmin, a=a, m=m)
 
 
+# --- Advanced Decline Curve Tools (petbox-dca) ---
+
+
+@mcp.tool()
+def fit_ple_decline(
+    production_data: list[dict[str, float]],
+) -> str:
+    """Fit Power Law Exponential (PLE) decline model to production data.
+
+    The PLE model (Ilk et al., 2008) captures transient and boundary-dominated
+    flow regimes in tight/shale reservoirs.  Uses petbox-dca for the forward model.
+
+    Args:
+        production_data: List of dicts with 'time' (months) and 'rate' keys,
+            or 'oil'/'gas' keys (time assumed as sequential months).
+    """
+    return _fit_ple(production_data)
+
+
+@mcp.tool()
+def fit_duong_decline(
+    production_data: list[dict[str, float]],
+) -> str:
+    """Fit Duong decline model to production data using petbox-dca.
+
+    The Duong model (2011) is designed for fracture-dominated flow in
+    unconventional/shale reservoirs.  Widely used for tight oil and shale gas.
+
+    Args:
+        production_data: List of dicts with 'time' (months) and 'rate' keys,
+            or 'oil'/'gas' keys (time assumed as sequential months).
+    """
+    return _fit_duong(production_data)
+
+
+@mcp.tool()
+def fit_sepd_decline(
+    production_data: list[dict[str, float]],
+) -> str:
+    """Fit Stretched Exponential (SEPD) decline model to production data.
+
+    The SEPD model (Valko, 2009) uses a stretched exponential function effective
+    for unconventional reservoirs with heterogeneous fracture networks.
+
+    Args:
+        production_data: List of dicts with 'time' (months) and 'rate' keys,
+            or 'oil'/'gas' keys (time assumed as sequential months).
+    """
+    return _fit_sepd(production_data)
+
+
+@mcp.tool()
+def forecast_advanced_decline(
+    model: str,
+    parameters: dict[str, float],
+    forecast_months: int = 360,
+    economic_limit: float = 5.0,
+) -> str:
+    """Forecast production using an advanced decline model (PLE, Duong, SEPD, THM).
+
+    Generates rate-time forecast and cumulative production using petbox-dca models.
+    Use parameters from fit_ple_decline, fit_duong_decline, or fit_sepd_decline,
+    or provide THM parameters directly.
+
+    Args:
+        model: Model name - 'ple', 'duong', 'sepd', or 'thm'.
+        parameters: Dict of model parameters.
+            PLE: qi, Di, Dinf, n
+            Duong: qi, a, m
+            SEPD: qi, tau, n
+            THM: qi, Di, bi, bf, telf (optional: bterm, tterm)
+        forecast_months: Number of months to forecast (default 360 = 30 years).
+        economic_limit: Minimum economic rate in vol/day (default 5.0).
+    """
+    return _forecast_advanced(model, parameters, forecast_months, economic_limit)
+
+
 # --- Calculation Tools ---
 
 
@@ -235,13 +324,17 @@ def calculate_pvt_properties(
     pressure: float,
     separator_pressure: float = 100.0,
     separator_temperature: float = 60.0,
+    correlation: str = "standing",
 ) -> str:
     """Calculate comprehensive black-oil PVT properties at given conditions.
 
     Returns bubble point, solution GOR, oil FVF, oil density, oil viscosity,
-    gas Z-factor, gas FVF, gas viscosity, and gas compressibility using
-    Standing, Beggs-Robinson, Hall-Yarborough, and Lee-Gonzalez-Eakin
-    correlations.
+    gas Z-factor, gas FVF, gas viscosity, and gas compressibility.
+
+    Supported oil correlation sets:
+        - 'standing' (default): Standing (1947)
+        - 'vasquez_beggs': Vasquez and Beggs (1980)
+        - 'petrosky_farshad': Petrosky and Farshad (1993)
 
     Args:
         api_gravity: Oil API gravity (degrees).
@@ -250,10 +343,12 @@ def calculate_pvt_properties(
         pressure: Current reservoir pressure in psi.
         separator_pressure: Separator pressure in psi (default 100).
         separator_temperature: Separator temperature in °F (default 60).
+        correlation: Oil correlation set — 'standing', 'vasquez_beggs',
+            or 'petrosky_farshad'.
     """
     return _calculate_pvt(
         api_gravity, gas_sg, temperature, pressure,
-        separator_pressure, separator_temperature,
+        separator_pressure, separator_temperature, correlation,
     )
 
 
@@ -273,6 +368,85 @@ def calculate_bubble_point(
         rs: Solution gas-oil ratio at bubble point in scf/STB.
     """
     return _bubble_point(api_gravity, gas_sg, temperature, rs)
+
+
+@mcp.tool()
+def calculate_oil_co(
+    api_gravity: float,
+    gas_sg: float,
+    temperature: float,
+    pressure: float,
+    bubble_point_pressure: float | None = None,
+    rs_at_pb: float | None = None,
+) -> str:
+    """Calculate oil compressibility above and below bubble point.
+
+    Uses Vasquez-Beggs (1980) above Pb and material-balance approach below Pb.
+
+    Args:
+        api_gravity: Oil API gravity (degrees).
+        gas_sg: Gas specific gravity (air = 1.0).
+        temperature: Reservoir temperature in °F.
+        pressure: Current reservoir pressure in psi.
+        bubble_point_pressure: Known bubble point pressure in psi (optional).
+        rs_at_pb: Solution GOR at bubble point in scf/STB (optional).
+    """
+    return _calculate_oil_co(
+        api_gravity, gas_sg, temperature, pressure,
+        bubble_point_pressure, rs_at_pb,
+    )
+
+
+@mcp.tool()
+def calculate_brine_pvt(
+    temperature: float,
+    pressure: float,
+    salinity: float = 0.0,
+) -> str:
+    """Calculate brine/formation water PVT properties.
+
+    Returns density, viscosity, FVF, and compressibility using
+    McCain (1990) and Osif (1988) correlations.
+
+    Args:
+        temperature: Formation temperature in °F.
+        pressure: Formation pressure in psi.
+        salinity: Total dissolved solids in ppm (default 0 = fresh water).
+    """
+    return _calculate_brine(temperature, pressure, salinity)
+
+
+@mcp.tool()
+def calculate_gas_z(
+    temperature: float,
+    pressure: float,
+    gas_sg: float,
+    method: str = "hall_yarborough",
+    pseudocritical_method: str = "sutton",
+    h2s_fraction: float = 0.0,
+    co2_fraction: float = 0.0,
+    n2_fraction: float = 0.0,
+) -> str:
+    """Calculate gas Z-factor with choice of correlation and pseudocritical method.
+
+    Z-factor methods: 'hall_yarborough' (default), 'dranchuk_abou_kassem'.
+    Pseudocritical methods: 'sutton' (default), 'piper' (better for gas
+    condensates and sour gases).
+
+    Args:
+        temperature: Temperature in °F.
+        pressure: Pressure in psi.
+        gas_sg: Gas specific gravity (air = 1.0).
+        method: Z-factor correlation — 'hall_yarborough' or 'dranchuk_abou_kassem'.
+        pseudocritical_method: Pseudocritical method — 'sutton' or 'piper'.
+        h2s_fraction: Mole fraction of H2S (for Piper method, 0-1).
+        co2_fraction: Mole fraction of CO2 (for Piper method, 0-1).
+        n2_fraction: Mole fraction of N2 (for Piper method, 0-1).
+    """
+    return _calculate_gas_z(
+        temperature, pressure, gas_sg, method, pseudocritical_method,
+        h2s_fraction, co2_fraction, n2_fraction,
+    )
 
 
 # --- Petrophysics Tools ---
