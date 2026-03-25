@@ -244,6 +244,21 @@ class TestForecastAdvancedDecline:
         result = json.loads(forecast_advanced_decline("ple", params, forecast_months=60))
         assert result["forecast_months"] == 60
 
+    def test_forecast_zero_months_raises(self):
+        params = {"qi": 1000, "Di": 0.002, "Dinf": 0.0003, "n": 0.5}
+        with pytest.raises(ValueError, match="forecast_months must be >= 1"):
+            forecast_advanced_decline("ple", params, forecast_months=0)
+
+    def test_forecast_negative_months_raises(self):
+        params = {"qi": 1000, "Di": 0.002, "Dinf": 0.0003, "n": 0.5}
+        with pytest.raises(ValueError, match="forecast_months must be >= 1"):
+            forecast_advanced_decline("ple", params, forecast_months=-5)
+
+    def test_forecast_negative_economic_limit_raises(self):
+        params = {"qi": 1000, "Di": 0.002, "Dinf": 0.0003, "n": 0.5}
+        with pytest.raises(ValueError, match="economic_limit must be non-negative"):
+            forecast_advanced_decline("ple", params, economic_limit=-1.0)
+
 
 # ---------------------------------------------------------------------------
 # Integration: fit then forecast round-trip
