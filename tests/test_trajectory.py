@@ -5,7 +5,15 @@ import math
 
 import pytest
 
-from petro_mcp.tools.trajectory import (
+try:
+    import welleng  # noqa: F401
+    HAS_WELLENG = True
+except ImportError:
+    HAS_WELLENG = False
+
+pytestmark = pytest.mark.skipif(not HAS_WELLENG, reason="welleng not installed")
+
+from petro_mcp.tools.trajectory import (  # noqa: E402
     calculate_survey,
     calculate_dogleg_severity,
     calculate_vertical_section,
