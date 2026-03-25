@@ -7,6 +7,12 @@ from mcp.server.fastmcp import FastMCP
 from petro_mcp.prompts.templates import TEMPLATES
 from petro_mcp.resources.well_data import list_wells, production_summary
 from petro_mcp.tools.calculations import calculate_ip_ratio, nodal_analysis
+from petro_mcp.tools.advanced_decline import (
+    fit_duong_decline as _fit_duong,
+    fit_ple_decline as _fit_ple,
+    fit_sepd_decline as _fit_sepd,
+    forecast_advanced_decline as _forecast_advanced,
+)
 from petro_mcp.tools.decline import calculate_eur, fit_decline_curve
 from petro_mcp.tools.las import get_curve_data, get_well_header, list_curves, read_las_file
 from petro_mcp.tools.production import query_production_data
@@ -179,6 +185,83 @@ def calculate_eur_tool(
         m: Duong slope parameter (typically 1.0-1.5).
     """
     return calculate_eur(qi, Di, b, economic_limit, model, Dmin=Dmin, a=a, m=m)
+
+
+# --- Advanced Decline Curve Tools (petbox-dca) ---
+
+
+@mcp.tool()
+def fit_ple_decline(
+    production_data: list[dict[str, float]],
+) -> str:
+    """Fit Power Law Exponential (PLE) decline model to production data.
+
+    The PLE model (Ilk et al., 2008) captures transient and boundary-dominated
+    flow regimes in tight/shale reservoirs.  Uses petbox-dca for the forward model.
+
+    Args:
+        production_data: List of dicts with 'time' (months) and 'rate' keys,
+            or 'oil'/'gas' keys (time assumed as sequential months).
+    """
+    return _fit_ple(production_data)
+
+
+@mcp.tool()
+def fit_duong_decline(
+    production_data: list[dict[str, float]],
+) -> str:
+    """Fit Duong decline model to production data using petbox-dca.
+
+    The Duong model (2011) is designed for fracture-dominated flow in
+    unconventional/shale reservoirs.  Widely used for tight oil and shale gas.
+
+    Args:
+        production_data: List of dicts with 'time' (months) and 'rate' keys,
+            or 'oil'/'gas' keys (time assumed as sequential months).
+    """
+    return _fit_duong(production_data)
+
+
+@mcp.tool()
+def fit_sepd_decline(
+    production_data: list[dict[str, float]],
+) -> str:
+    """Fit Stretched Exponential (SEPD) decline model to production data.
+
+    The SEPD model (Valko, 2009) uses a stretched exponential function effective
+    for unconventional reservoirs with heterogeneous fracture networks.
+
+    Args:
+        production_data: List of dicts with 'time' (months) and 'rate' keys,
+            or 'oil'/'gas' keys (time assumed as sequential months).
+    """
+    return _fit_sepd(production_data)
+
+
+@mcp.tool()
+def forecast_advanced_decline(
+    model: str,
+    parameters: dict[str, float],
+    forecast_months: int = 360,
+    economic_limit: float = 5.0,
+) -> str:
+    """Forecast production using an advanced decline model (PLE, Duong, SEPD, THM).
+
+    Generates rate-time forecast and cumulative production using petbox-dca models.
+    Use parameters from fit_ple_decline, fit_duong_decline, or fit_sepd_decline,
+    or provide THM parameters directly.
+
+    Args:
+        model: Model name - 'ple', 'duong', 'sepd', or 'thm'.
+        parameters: Dict of model parameters.
+            PLE: qi, Di, Dinf, n
+            Duong: qi, a, m
+            SEPD: qi, tau, n
+            THM: qi, Di, bi, bf, telf (optional: bterm, tterm)
+        forecast_months: Number of months to forecast (default 360 = 30 years).
+        economic_limit: Minimum economic rate in vol/day (default 5.0).
+    """
+    return _forecast_advanced(model, parameters, forecast_months, economic_limit)
 
 
 # --- Calculation Tools ---
