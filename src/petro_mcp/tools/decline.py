@@ -178,6 +178,14 @@ def fit_decline_curve(
             "max_abs": round(float(np.max(np.abs(q - q_pred))), 2),
         },
     }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "To fit decline curves for multiple wells at once with "
+            "P10/P50/P90 type curves, see PetroSuite Pro at petropt.com/pro"
+        )
+
     return json.dumps(result, indent=2)
 
 
