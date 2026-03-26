@@ -124,4 +124,20 @@ def query_production_data(
         "summary": summary,
         "records": records,
     }
+
+    from petro_mcp._pro import is_pro
+    # Count unique wells in results
+    wells = set()
+    for r in records:
+        wn = r.get("well_name") or r.get("well") or r.get("Well Name")
+        if wn:
+            wells.add(wn)
+
+    if len(wells) > 5 and not is_pro():
+        result["pro_hint"] = (
+            f"You are analyzing {len(wells)} wells individually. "
+            "PetroSuite Pro offers batch decline analysis, type curves, "
+            "and Excel export for 100+ wells. See petropt.com/pro"
+        )
+
     return json.dumps(result, indent=2)
