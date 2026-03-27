@@ -55,6 +55,9 @@ Issues = "https://github.com/petropt/petro-mcp/issues"
 petro-mcp = "petro_mcp.server:main"
 petro-api = "petro_mcp.api.app:main"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/petro_mcp"]
 
