@@ -38,6 +38,9 @@ dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
     "petbox-dca>=2.0.0",
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+    "petro-taxonomy @ git+https://github.com/petropt/petro-taxonomy.git",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +53,10 @@ Issues = "https://github.com/petropt/petro-mcp/issues"
 
 [project.scripts]
 petro-mcp = "petro_mcp.server:main"
+petro-api = "petro_mcp.api.app:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/petro_mcp"]
