@@ -318,6 +318,47 @@ Quick interpretation:
   hydrocarbon-bearing.
 ```
 
+## REST API
+
+petro-mcp includes a FastAPI service that exposes the calculation engines as REST endpoints. This powers [tools.petropt.com](https://tools.petropt.com) -- the web frontend calls these endpoints instead of re-implementing formulas in JavaScript.
+
+### Quick start
+
+```bash
+pip install petro-mcp
+petro-api              # starts on http://localhost:8000
+# or: uvicorn petro_mcp.api.app:app --reload
+```
+
+### Endpoints
+
+| Group | Endpoint | Description |
+|-------|----------|-------------|
+| DCA | `POST /api/v1/decline/fit` | Fit Arps decline curve to production data |
+| DCA | `POST /api/v1/decline/eur` | Calculate EUR from decline parameters |
+| DCA | `POST /api/v1/decline/forecast` | Generate production forecast |
+| PVT | `POST /api/v1/pvt/properties` | Black-oil PVT properties (Standing, Vasquez-Beggs, Petrosky-Farshad) |
+| PVT | `POST /api/v1/pvt/bubble-point` | Bubble point pressure |
+| PVT | `POST /api/v1/pvt/z-factor` | Gas Z-factor (Hall-Yarborough, Dranchuk) |
+| Petrophysics | `POST /api/v1/petrophys/archie` | Water saturation (Archie) |
+| Petrophysics | `POST /api/v1/petrophys/porosity` | Density porosity |
+| Petrophysics | `POST /api/v1/petrophys/vshale` | Shale volume from gamma ray |
+| Drilling | `POST /api/v1/drilling/hydrostatic` | Hydrostatic pressure |
+| Drilling | `POST /api/v1/drilling/ecd` | Equivalent circulating density |
+| Drilling | `POST /api/v1/drilling/kill-sheet` | Kill mud weight + ICP/FCP |
+| Economics | `POST /api/v1/economics/npv` | Net Present Value |
+| Economics | `POST /api/v1/economics/well-economics` | Full DCF analysis |
+
+Interactive docs at `http://localhost:8000/docs` (Swagger UI).
+
+### Example
+
+```bash
+curl -X POST http://localhost:8000/api/v1/decline/eur \
+  -H "Content-Type: application/json" \
+  -d '{"qi": 800, "Di": 0.06, "b": 1.2}'
+```
+
 ## Limitations
 
 - **LAS 2.0 only** -- LAS 3.0 and DLIS formats are not yet supported
