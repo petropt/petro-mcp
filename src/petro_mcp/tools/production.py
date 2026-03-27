@@ -8,6 +8,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from petro_taxonomy import columns as _tx_columns
+
+# Canonical field name -> internal key used in production records.
+# The taxonomy resolves raw headers to canonical names; this map converts
+# those canonical names into the short keys petro-mcp uses internally.
+_CANONICAL_TO_KEY: dict[str, str] = {
+    "date": "date",
+    "well_name": "well_name",
+    "oil_rate_bopd": "oil",
+    "gas_rate_mcfd": "gas",
+    "water_rate_bwpd": "water",
+}
+
+# Which internal keys to parse as floats.
+_NUMERIC_KEYS = {"oil", "gas", "water"}
+
 
 def _parse_date(date_str: str) -> datetime:
     """Parse a date string, trying common formats."""
@@ -23,7 +39,8 @@ def _read_production_csv(file_path: str) -> list[dict[str, Any]]:
     """Read a production CSV file.
 
     Expected columns: date, well_name (optional), oil, gas, water.
-    Column matching is case-insensitive and flexible.
+    Column matching uses petro-taxonomy's 2,000+ alias database for
+    flexible, case-insensitive detection.
     """
     path = Path(file_path)
     if not path.exists():
@@ -34,23 +51,23 @@ def _read_production_csv(file_path: str) -> list[dict[str, Any]]:
         if reader.fieldnames is None:
             raise ValueError(f"Empty or invalid CSV file: {file_path}")
 
-        # Map columns flexibly
-        col_map: dict[str, str] = {}
+        # Use petro-taxonomy to resolve every header to a canonical name,
+        # then map canonical names to internal keys.
+        col_map: dict[str, str] = {}  # internal_key -> original_field
         for field in reader.fieldnames:
-            fl = field.lower().strip()
-            if "date" in fl:
-                col_map["date"] = field
-            elif fl in ("well", "well_name", "wellname", "well name"):
-                col_map["well_name"] = field
-            elif fl in ("oil", "oil_rate", "oil rate", "oil_bopd", "bopd"):
-                col_map["oil"] = field
-            elif fl in ("gas", "gas_rate", "gas rate", "gas_mcfd", "mcfd"):
-                col_map["gas"] = field
-            elif fl in ("water", "water_rate", "water rate", "water_bwpd", "bwpd"):
-                col_map["water"] = field
+            hit = _tx_columns.resolve(field)
+            if hit is None:
+                continue
+            canonical = hit["canonical"]
+            internal = _CANONICAL_TO_KEY.get(canonical)
+            if internal and internal not in col_map:
+                col_map[internal] = field
 
         if "date" not in col_map:
-            raise ValueError(f"No date column found in {file_path}. Columns: {reader.fieldnames}")
+            raise ValueError(
+                f"No date column found in {file_path}. "
+                f"Columns: {reader.fieldnames}"
+            )
 
         records = []
         for row in reader:
@@ -59,7 +76,7 @@ def _read_production_csv(file_path: str) -> list[dict[str, Any]]:
             }
             if "well_name" in col_map:
                 record["well_name"] = row[col_map["well_name"]].strip()
-            for key in ("oil", "gas", "water"):
+            for key in _NUMERIC_KEYS:
                 if key in col_map:
                     val = row[col_map[key]].strip()
                     record[key] = float(val) if val else 0.0
