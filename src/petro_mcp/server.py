@@ -17,6 +17,7 @@ TOOL_GROUPS: dict[str, str] = {
     "decline": "Decline curve analysis (Arps + advanced)",
     "pvt": "PVT correlations",
     "petrophysics": "Petrophysics interpretation",
+    "type_curves": "Type curve generation and analysis",
     "calculations": "Ratios and nodal analysis",
     "units": "Unit conversions",
     "drilling": "Drilling calculations",
@@ -24,6 +25,8 @@ TOOL_GROUPS: dict[str, str] = {
     "economics": "Production economics",
     "trajectory": "Well trajectory (requires welleng)",
     "production_eng": "Production engineering",
+    "rta": "Rate transient analysis",
+    "probabilistic": "Probabilistic decline & EUR (P10/P50/P90)",
 }
 
 
@@ -254,6 +257,136 @@ def _register_decline(mcp: FastMCP) -> None:
             economic_limit: Minimum economic rate in vol/day (default 5.0).
         """
         return _forecast_advanced(model, parameters, forecast_months, economic_limit)
+
+
+
+def _register_type_curves(mcp: FastMCP) -> None:
+    from petro_mcp.tools.type_curves import (
+        calculate_eur_from_type_curve as _eur_from_tc,
+        calculate_normalized_production as _norm_prod,
+        calculate_vintage_curves as _vintage_curves,
+        compare_well_to_type_curve as _compare_well,
+        fit_type_curve as _fit_tc,
+        generate_type_curves as _gen_tc,
+    )
+
+    @mcp.tool()
+    def generate_type_curves(
+        file_path: str,
+        group_by: str | None = None,
+        normalize_by: str | None = None,
+        percentiles: list[int] | None = None,
+        rate_key: str = "oil",
+    ) -> str:
+        """Generate P10/P50/P90 type curves from multi-well production data.
+
+        Reads a multi-well CSV, aligns each well to time-zero, and computes
+        percentile rate envelopes at each producing month. P10 = optimistic
+        (high rate), P90 = conservative (low rate).
+
+        Args:
+            file_path: Absolute path to multi-well production CSV.
+            group_by: Optional column to group wells (e.g. 'formation', 'vintage').
+            normalize_by: Optional 'lateral_length' to normalize per 1000 ft.
+            percentiles: Percentile levels (default [10, 50, 90]).
+            rate_key: Rate column to use ('oil', 'gas', 'water').
+        """
+        return _gen_tc(file_path, group_by, normalize_by, percentiles, rate_key)
+
+    @mcp.tool()
+    def normalize_production(
+        file_path: str,
+        well_name: str | None = None,
+        normalize_by: str = "lateral_length",
+        lateral_lengths: dict[str, float] | None = None,
+        rate_key: str = "oil",
+        per_length: float = 1000.0,
+    ) -> str:
+        """Normalize production rates by lateral length for fair well comparison.
+
+        Args:
+            file_path: Absolute path to production CSV.
+            well_name: Optional single well name to normalize.
+            normalize_by: Normalization basis ('lateral_length').
+            lateral_lengths: Dict mapping well_name -> lateral length in ft.
+            rate_key: Rate column ('oil', 'gas', 'water').
+            per_length: Normalize per this many feet (default 1000).
+        """
+        return _norm_prod(file_path, well_name, normalize_by, lateral_lengths, rate_key, per_length)
+
+    @mcp.tool()
+    def vintage_curves(
+        file_path: str,
+        vintage_column: str = "first_production_year",
+        percentiles: list[int] | None = None,
+        rate_key: str = "oil",
+    ) -> str:
+        """Generate type curves grouped by completion/vintage year.
+
+        Tracks how well performance changes by vintage -- are newer wells
+        improving or declining relative to older completions?
+
+        Args:
+            file_path: Absolute path to multi-well production CSV.
+            vintage_column: Column containing vintage year (default 'first_production_year').
+            percentiles: Percentile levels (default [10, 50, 90]).
+            rate_key: Rate column ('oil', 'gas', 'water').
+        """
+        return _vintage_curves(file_path, vintage_column, percentiles, rate_key)
+
+    @mcp.tool()
+    def fit_type_curve(
+        percentile_rates: list[float],
+        percentile_times: list[float] | None = None,
+        model: str = "hyperbolic",
+    ) -> str:
+        """Fit a decline model to a type curve percentile series.
+
+        Takes a percentile rate array (e.g. P50 from generate_type_curves)
+        and fits an Arps decline model to extract qi, Di, b parameters.
+
+        Args:
+            percentile_rates: Rate values at each producing month.
+            percentile_times: Time values in months. If None, assumed 0..N-1.
+            model: Decline model ('exponential', 'hyperbolic', 'harmonic').
+        """
+        return _fit_tc(percentile_rates, percentile_times, model)
+
+    @mcp.tool()
+    def eur_from_type_curve(
+        type_curve_params: dict[str, dict[str, float]],
+        economic_limit: float = 5.0,
+        max_time: float = 600,
+    ) -> str:
+        """Calculate EUR for each percentile case (P10/P50/P90) from type curve parameters.
+
+        Args:
+            type_curve_params: Dict mapping label (e.g. 'P10') to decline params
+                dict with 'qi', 'Di', 'b', and optionally 'model'.
+            economic_limit: Minimum economic rate (same units as qi).
+            max_time: Maximum forecast months (default 600 = 50 years).
+        """
+        return _eur_from_tc(type_curve_params, economic_limit, max_time)
+
+    @mcp.tool()
+    def compare_well_to_type_curve(
+        well_production: list[float],
+        type_curve_p10: list[float],
+        type_curve_p50: list[float],
+        type_curve_p90: list[float],
+    ) -> str:
+        """Compare a well's production to P10/P50/P90 type curves.
+
+        Returns percentile ranking at each month and overall classification
+        (outperformer, above_average, average, below_average, underperformer).
+
+        Args:
+            well_production: Well's monthly production rates.
+            type_curve_p10: P10 (optimistic) type curve rates.
+            type_curve_p50: P50 (median) type curve rates.
+            type_curve_p90: P90 (conservative) type curve rates.
+        """
+        return _compare_well(well_production, type_curve_p10, type_curve_p50, type_curve_p90)
 
 
 def _register_calculations(mcp: FastMCP) -> None:
@@ -1483,6 +1616,313 @@ def _register_trajectory(mcp: FastMCP) -> None:
         )
 
 
+def _register_rta(mcp: FastMCP) -> None:
+    from petro_mcp.tools.rta import (
+        calculate_normalized_rate as _calc_norm_rate,
+        calculate_material_balance_time as _calc_mbt,
+        calculate_blasingame_variables as _calc_blasingame,
+        calculate_agarwal_gardner_variables as _calc_ag,
+        calculate_npi_variables as _calc_npi,
+        calculate_flowing_material_balance as _calc_fmb,
+        calculate_sqrt_time_analysis as _calc_sqrt_t,
+        calculate_rta_permeability as _calc_rta_perm,
+    )
+
+    @mcp.tool()
+    def rta_normalized_rate(
+        rate: list[float],
+        flowing_pressure: list[float],
+        initial_pressure: float,
+    ) -> str:
+        """Normalize production rate by pressure drawdown: q / (Pi - Pwf).
+
+        Removes the effect of variable flowing pressure from production data,
+        making it suitable for type curve analysis and RTA.
+
+        Args:
+            rate: Production rates (bbl/d or Mcf/d).
+            flowing_pressure: Bottomhole flowing pressures (psi).
+            initial_pressure: Initial reservoir pressure (psi).
+        """
+        return _calc_norm_rate(rate, flowing_pressure, initial_pressure)
+
+    @mcp.tool()
+    def rta_material_balance_time(
+        cumulative_production: list[float],
+        rate: list[float],
+    ) -> str:
+        """Compute material balance time: tMB = Np / q.
+
+        The Blasingame x-axis transform that converts variable-rate production
+        into an equivalent constant-rate time for decline type curve matching.
+
+        Args:
+            cumulative_production: Cumulative production values.
+            rate: Instantaneous production rates.
+        """
+        return _calc_mbt(cumulative_production, rate)
+
+    @mcp.tool()
+    def rta_blasingame(
+        times: list[float],
+        rates: list[float],
+        cumulative: list[float],
+        flowing_pressures: list[float],
+        initial_pressure: float,
+    ) -> str:
+        """Compute Blasingame rate-normalized integral and derivative for type curve matching.
+
+        Calculates material balance time, normalized rate, rate-integral, and
+        rate-integral-derivative used for Blasingame decline type curve analysis.
+
+        Args:
+            times: Time values (days or months).
+            rates: Production rates.
+            cumulative: Cumulative production.
+            flowing_pressures: Bottomhole flowing pressures (psi).
+            initial_pressure: Initial reservoir pressure (psi).
+        """
+        return _calc_blasingame(times, rates, cumulative, flowing_pressures, initial_pressure)
+
+    @mcp.tool()
+    def rta_agarwal_gardner(
+        times: list[float],
+        rates: list[float],
+        cumulative: list[float],
+        flowing_pressures: list[float],
+        initial_pressure: float,
+    ) -> str:
+        """Compute Agarwal-Gardner rate-normalized variables for type curve analysis.
+
+        Calculates normalized rate q/(Pi-Pwf), inverse normalized rate,
+        cumulative-normalized production, and material balance time.
+
+        Args:
+            times: Time values (days or months).
+            rates: Production rates.
+            cumulative: Cumulative production.
+            flowing_pressures: Bottomhole flowing pressures (psi).
+            initial_pressure: Initial reservoir pressure (psi).
+        """
+        return _calc_ag(times, rates, cumulative, flowing_pressures, initial_pressure)
+
+    @mcp.tool()
+    def rta_npi(
+        times: list[float],
+        rates: list[float],
+        flowing_pressures: list[float],
+        initial_pressure: float,
+    ) -> str:
+        """Compute Normalized Pressure Integral (NPI) for flowing material balance.
+
+        NPI integrates the pressure-normalized rate over time to smooth noisy
+        production data. Used for flow regime identification and FMB analysis.
+
+        Args:
+            times: Time values (days or months).
+            rates: Production rates.
+            flowing_pressures: Bottomhole flowing pressures (psi).
+            initial_pressure: Initial reservoir pressure (psi).
+        """
+        return _calc_npi(times, rates, flowing_pressures, initial_pressure)
+
+    @mcp.tool()
+    def rta_flowing_material_balance(
+        rates: list[float],
+        flowing_pressures: list[float],
+        initial_pressure: float,
+        fluid_fvf: float,
+        total_compressibility: float,
+    ) -> str:
+        """Flowing Material Balance: estimate OOIP/OGIP from production data.
+
+        Plots q/(Pi-Pwf) vs normalized cumulative production. The x-intercept
+        of the regression line gives the contacted hydrocarbon volume.
+
+        Args:
+            rates: Production rates (bbl/d or Mcf/d).
+            flowing_pressures: Bottomhole flowing pressures (psi).
+            initial_pressure: Initial reservoir pressure (psi).
+            fluid_fvf: Formation volume factor (rb/stb or rcf/scf).
+            total_compressibility: Total system compressibility (1/psi).
+        """
+        return _calc_fmb(rates, flowing_pressures, initial_pressure, fluid_fvf, total_compressibility)
+
+    @mcp.tool()
+    def rta_sqrt_time(
+        rates: list[float],
+        times: list[float],
+        flowing_pressures: list[float],
+        initial_pressure: float,
+    ) -> str:
+        """Square root of time analysis for linear flow identification.
+
+        During fracture-dominated linear flow, (Pi-Pwf)/q vs sqrt(t) is a
+        straight line. The slope is used to determine sqrt(k)*xf.
+
+        Args:
+            rates: Production rates (bbl/d or Mcf/d).
+            times: Time values (days).
+            flowing_pressures: Bottomhole flowing pressures (psi).
+            initial_pressure: Initial reservoir pressure (psi).
+        """
+        return _calc_sqrt_t(rates, times, flowing_pressures, initial_pressure)
+
+    @mcp.tool()
+    def rta_permeability(
+        slope_from_linear_flow: float,
+        net_pay_ft: float,
+        porosity: float,
+        viscosity_cp: float,
+        total_compressibility: float,
+        fracture_half_length_ft: float | None = None,
+    ) -> str:
+        """Extract permeability from RTA linear flow analysis.
+
+        Uses the slope from sqrt(t) analysis to calculate either permeability
+        (if fracture half-length is known) or the sqrt(k)*xf product.
+
+        Args:
+            slope_from_linear_flow: Slope from sqrt(t) analysis (psi*d/bbl/d^0.5).
+            net_pay_ft: Net pay thickness (ft).
+            porosity: Porosity (fraction, 0-1).
+            viscosity_cp: Fluid viscosity (cp).
+            total_compressibility: Total compressibility (1/psi).
+            fracture_half_length_ft: Fracture half-length (ft). If None, returns sqrt(k)*xf.
+        """
+        return _calc_rta_perm(
+            slope_from_linear_flow, net_pay_ft, porosity,
+            viscosity_cp, total_compressibility, fracture_half_length_ft,
+        )
+
+
+def _register_probabilistic(mcp: FastMCP) -> None:
+    from petro_mcp.tools.probabilistic import (
+        bootstrap_decline_parameters as _bootstrap,
+        calculate_eur_distribution as _eur_dist,
+        monte_carlo_eur as _mc_eur,
+        probabilistic_forecast as _prob_forecast,
+        sensitivity_analysis as _sensitivity,
+    )
+
+    @mcp.tool()
+    def mc_eur(
+        qi_mean: float,
+        qi_std: float,
+        di_mean: float,
+        di_std: float,
+        b_mean: float = 1.0,
+        b_std: float = 0.3,
+        economic_limit: float = 5.0,
+        num_simulations: int = 10000,
+        distribution: str = "lognormal",
+    ) -> str:
+        """Monte Carlo EUR estimation with P10/P50/P90 (reserve report ready).
+
+        Samples qi, Di, and b-factor from lognormal (or normal) distributions,
+        computes EUR for each realization using Arps hyperbolic decline, and
+        returns probabilistic reserve estimates.
+
+        Args:
+            qi_mean: Mean initial production rate (bbl/day or Mcf/day).
+            qi_std: Standard deviation of initial rate.
+            di_mean: Mean initial decline rate (1/month, nominal).
+            di_std: Standard deviation of decline rate.
+            b_mean: Mean Arps b-factor (default 1.0).
+            b_std: Standard deviation of b-factor (default 0.3).
+            economic_limit: Minimum economic rate (default 5.0).
+            num_simulations: Number of Monte Carlo realizations (default 10000).
+            distribution: Sampling distribution - 'lognormal' or 'normal'.
+        """
+        return _mc_eur(qi_mean, qi_std, di_mean, di_std, b_mean, b_std,
+                       economic_limit, num_simulations, distribution)
+
+    @mcp.tool()
+    def bootstrap_decline(
+        production_data: list[dict[str, float]],
+        model: str = "hyperbolic",
+        num_bootstrap: int = 1000,
+    ) -> str:
+        """Bootstrap decline curve parameters from production data.
+
+        Resamples production data with replacement, refits the decline model
+        each time, and returns confidence intervals on parameters and EUR.
+
+        Args:
+            production_data: List of dicts with 'time' (months) and 'rate' keys.
+            model: Decline model - 'exponential', 'hyperbolic', or 'harmonic'.
+            num_bootstrap: Number of bootstrap iterations (default 1000).
+        """
+        return _bootstrap(production_data, model, num_bootstrap)
+
+    @mcp.tool()
+    def eur_distribution(
+        eur_values: list[float],
+        distribution: str = "lognormal",
+    ) -> str:
+        """Fit a statistical distribution to EUR values for P10/P50/P90.
+
+        Takes a list of EUR values (from Monte Carlo, bootstrapping, or analog
+        wells) and fits a lognormal or normal distribution. Returns percentiles,
+        distribution parameters, and Kolmogorov-Smirnov goodness of fit.
+
+        Args:
+            eur_values: List of EUR values.
+            distribution: Distribution to fit - 'lognormal' or 'normal'.
+        """
+        return _eur_dist(eur_values, distribution)
+
+    @mcp.tool()
+    def decline_sensitivity(
+        qi: float,
+        di: float,
+        b: float,
+        economic_limit: float = 5.0,
+        parameter_ranges: dict[str, list[float]] | None = None,
+    ) -> str:
+        """Sensitivity analysis on decline parameters for tornado chart data.
+
+        Varies each parameter (qi, Di, b, economic limit) independently and
+        computes EUR at low/high values. Returns data sorted by impact for
+        tornado chart visualization.
+
+        Args:
+            qi: Base initial rate (bbl/day or Mcf/day).
+            di: Base initial decline rate (1/month).
+            b: Base Arps b-factor.
+            economic_limit: Minimum economic rate (default 5.0).
+            parameter_ranges: Optional dict mapping parameter name to [low, high].
+                Defaults to +/-20% of base values.
+        """
+        return _sensitivity(qi, di, b, economic_limit, parameter_ranges)
+
+    @mcp.tool()
+    def prob_forecast(
+        qi_dist: dict[str, float],
+        di_dist: dict[str, float],
+        b_dist: dict[str, float],
+        forecast_months: int = 360,
+        economic_limit: float = 5.0,
+        num_simulations: int = 1000,
+    ) -> str:
+        """Generate P10/P50/P90 rate-time forecast profiles.
+
+        Unlike mc_eur which returns only EUR summaries, this generates the full
+        rate-time curves at each percentile. Output includes downsampled rate
+        profiles and cumulative production milestones at 1/3/5/10/20/30 years.
+
+        Args:
+            qi_dist: Dict with 'mean' and 'std' for initial rate.
+            di_dist: Dict with 'mean' and 'std' for decline rate.
+            b_dist: Dict with 'mean' and 'std' for b-factor.
+            forecast_months: Forecast duration in months (default 360 = 30 years).
+            economic_limit: Minimum economic rate (default 5.0).
+            num_simulations: Number of realizations (default 1000).
+        """
+        return _prob_forecast(qi_dist, di_dist, b_dist, forecast_months,
+                              economic_limit, num_simulations)
+
+
 def _register_resources(mcp: FastMCP) -> None:
     @mcp.resource("wells://list/{directory}")
     def browse_wells(directory: str) -> str:
@@ -1539,6 +1979,8 @@ _GROUP_REGISTRARS: dict[str, callable] = {
     "units": _register_units,
     "production_eng": _register_production_eng,
     "trajectory": _register_trajectory,
+    "rta": _register_rta,
+    "probabilistic": _register_probabilistic,
 }
 
 
