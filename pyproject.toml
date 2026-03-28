@@ -40,7 +40,6 @@ dependencies = [
     "petbox-dca>=2.0.0",
     "fastapi>=0.100",
     "uvicorn>=0.20",
-    "petro-taxonomy @ git+https://github.com/petropt/petro-taxonomy.git",
 ]
 
 [project.optional-dependencies]
