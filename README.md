@@ -18,6 +18,8 @@ petro-mcp is a [Model Context Protocol](https://modelcontextprotocol.io) server 
 
 **Why MCP?** MCP is an open standard that lets AI assistants interact with external data and tools. While other energy MCP servers provide commodity prices ([OilpriceAPI](https://github.com/OilpriceAPI/mcp-server)), petro-mcp is purpose-built for petroleum engineering workflows -- well log interpretation, decline curve analysis, reservoir engineering, drilling calculations, production engineering, and economics.
 
+**Prefer a web UI?** Try the [Production Close Assistant](https://tools.petropt.com/production-close/) -- upload messy production data, get clean analysis-ready output in seconds. Free, no signup. Also: [Decline Curve Analysis](https://tools.petropt.com/decline-curve/) | [Well Economics](https://tools.petropt.com/well-economics/)
+
 ## Prerequisites
 
 - **Python 3.10 or later** ([download](https://www.python.org/downloads/))
