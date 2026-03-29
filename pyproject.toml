@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "petro-mcp"
-version = "0.8.0"
+version = "0.8.1"
 description = "MCP server exposing petroleum engineering data and tools to LLMs"
 readme = "README.md"
 license = "MIT"
