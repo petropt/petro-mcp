@@ -194,6 +194,13 @@ def calculate_pz_analysis(
             "abandonment_recovery_factor": abandonment_recovery,
         }
 
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro integrates material balance with reservoir "
+            "simulation for history-matched forecasts. See petropt.com/pro"
+        )
+
     return json.dumps(result, indent=2)
 
 
@@ -385,6 +392,13 @@ def calculate_havlena_odeh(
             "efw_rb_stb": efw_values,
         },
     }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro connects material balance to reservoir simulation "
+            "for full-field forecasting. See petropt.com/pro"
+        )
 
     return json.dumps(result, indent=2)
 

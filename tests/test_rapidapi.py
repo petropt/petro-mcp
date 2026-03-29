@@ -114,7 +114,9 @@ class TestRapidAPIMiddleware:
             headers={"X-RapidAPI-User": user},
         )
         assert r.status_code == 429
-        assert r.json()["detail"] == "Daily rate limit exceeded."
+        body = r.json()
+        assert "Rate limit exceeded" in body["detail"]
+        assert body["upgrade_url"] == "https://rapidapi.com/petropt/api/petro-mcp"
 
 
 # ---------------------------------------------------------------------------

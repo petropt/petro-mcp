@@ -175,6 +175,14 @@ def calculate_blasingame_variables(
         "num_points": n,
         "method": "Blasingame",
     }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro provides advanced RTA workflows with automated "
+            "type curve matching and OOIP/OGIP estimation. See petropt.com/pro"
+        )
+
     return json.dumps(result, indent=2)
 
 
@@ -392,6 +400,14 @@ def calculate_flowing_material_balance(
         "num_valid_points": int(np.sum(valid)),
         "method": "Flowing Material Balance",
     }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro combines FMB with Blasingame type curves for "
+            "integrated rate transient analysis. See petropt.com/pro"
+        )
+
     return json.dumps(result, indent=2)
 
 

@@ -129,7 +129,13 @@ class RapidAPIMiddleware(BaseHTTPMiddleware):
         if current_count > limit:
             return JSONResponse(
                 status_code=429,
-                content={"detail": "Daily rate limit exceeded."},
+                content={
+                    "detail": (
+                        "Rate limit exceeded. Upgrade your plan at "
+                        "https://rapidapi.com/petropt/api/petro-mcp"
+                    ),
+                    "upgrade_url": "https://rapidapi.com/petropt/api/petro-mcp",
+                },
                 headers={
                     "X-RateLimit-Limit": str(limit),
                     "X-RateLimit-Remaining": "0",

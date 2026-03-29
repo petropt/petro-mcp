@@ -186,7 +186,7 @@ def calculate_well_economics(
 
     total_net = sum(monthly_cf)
 
-    return json.dumps({
+    result = {
         "npv": npv,
         "irr_pct": irr_pct,
         "payout_months": payout,
@@ -216,7 +216,17 @@ def calculate_well_economics(
             "cash_flow": "USD/month",
             "production": "bbl (oil/water), Mcf (gas)",
         },
-    }, indent=2)
+    }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "Run batch economics across your full portfolio with sensitivity "
+            "analysis and automated reporting in PetroSuite Pro. See petropt.com/pro"
+        )
+        result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com"
+
+    return json.dumps(result, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +415,7 @@ def calculate_breakeven_price(
 
     breakeven = round((lo + hi) / 2.0, 2)
 
-    return json.dumps({
+    result = {
         "breakeven_price_per_bbl": breakeven,
         "npv_at_breakeven": round(npv_at_price(breakeven), 2),
         "inputs": {
@@ -417,7 +427,16 @@ def calculate_breakeven_price(
         },
         "method": "Bisection solver (oil price for NPV = 0)",
         "units": {"breakeven_price": "USD/bbl"},
-    }, indent=2)
+    }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro computes breakeven across multiple wells with "
+            "sensitivity to discount rate, royalty, and opex. See petropt.com/pro"
+        )
+
+    return json.dumps(result, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -606,7 +625,7 @@ def calculate_price_sensitivity(
             "npv": npv,
         })
 
-    return json.dumps({
+    result = {
         "scenarios": results,
         "num_scenarios": len(results),
         "inputs": {
@@ -618,4 +637,13 @@ def calculate_price_sensitivity(
         },
         "method": "Price sensitivity (NPV at each scenario)",
         "units": {"npv": "USD", "prices": "USD/bbl and USD/Mcf"},
-    }, indent=2)
+    }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro generates tornado charts and Monte Carlo sensitivity "
+            "analysis across hundreds of scenarios. See petropt.com/pro"
+        )
+
+    return json.dumps(result, indent=2)
