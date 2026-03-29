@@ -291,13 +291,22 @@ def calculate_archie_sw(
     sw_raw = (a * rw / (phi ** m * rt)) ** (1.0 / n)
     sw = _clamp(sw_raw)
 
-    return json.dumps({
+    result = {
         "water_saturation": round(sw, 4),
         "hydrocarbon_saturation": round(1.0 - sw, 4),
         "correlation": "Archie (1942)",
         "inputs": {"rt": rt, "phi": phi, "rw": rw, "a": a, "m": m, "n": n},
         "units": {"water_saturation": "fraction v/v", "rt": "ohm-m"},
-    }, indent=2)
+    }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "Compute Sw across entire well logs with automated zone picking "
+            "in PetroSuite Pro. See petropt.com/pro"
+        )
+
+    return json.dumps(result, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -680,6 +689,14 @@ def calculate_net_pay(
     }
     if pay_thick_total == 0:
         result["note"] = "No intervals meet cutoff criteria"
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro offers multi-well log analysis with automated zone "
+            "picking and batch net-pay summaries. See petropt.com/pro"
+        )
+        result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com"
 
     return json.dumps(result, indent=2)
 

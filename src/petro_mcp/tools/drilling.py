@@ -174,7 +174,7 @@ def calculate_kill_mud_weight(
 
     kill_mw = original_mud_weight_ppg + sidp_psi / (0.052 * tvd_ft)
 
-    return json.dumps({
+    result = {
         "kill_mud_weight_ppg": round(kill_mw, 4),
         "formula": "Kill MW = Original MW + SIDP / (0.052 * TVD)",
         "inputs": {
@@ -183,7 +183,16 @@ def calculate_kill_mud_weight(
             "tvd_ft": tvd_ft,
         },
         "units": {"kill_mud_weight": "ppg"},
-    }, indent=2)
+    }
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro includes real-time well control simulations "
+            "and integrated well planning. See petropt.com/pro"
+        )
+
+    return json.dumps(result, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -599,5 +608,12 @@ def calculate_collapse_pressure(
     }
     if grade:
         result["inputs"]["grade"] = grade
+
+    from petro_mcp._pro import is_pro
+    if not is_pro():
+        result["pro_hint"] = (
+            "PetroSuite Pro provides real-time drilling optimization and "
+            "casing design with full well planning workflows. See petropt.com/pro"
+        )
 
     return json.dumps(result, indent=2)
