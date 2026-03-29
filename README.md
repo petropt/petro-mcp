@@ -318,7 +318,28 @@ Quick interpretation:
   hydrocarbon-bearing.
 ```
 
-## REST API
+## Hosted API (RapidAPI)
+
+Don't want to run the server yourself? Use the hosted API -- free tier available, no setup required.
+
+**[Subscribe on RapidAPI](https://rapidapi.com/groundwork-analytics-groundwork-analytics-default/api/petro-mcp)** -- 16 endpoints for decline curves, PVT, petrophysics, drilling, and economics.
+
+| Plan | Price | Requests/month |
+|------|-------|----------------|
+| Free | $0 | 1,000 |
+| Pro | $49/mo | 100,000 |
+| Ultra | $99/mo | 1,000,000 |
+
+```bash
+curl -X POST "https://petro-mcp.p.rapidapi.com/api/v1/decline/fit" \
+  -H "X-RapidAPI-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"production_data":[{"time":0,"rate":1000},{"time":1,"rate":850},{"time":2,"rate":730}]}'
+```
+
+Also available as interactive web tools at [tools.petropt.com](https://tools.petropt.com).
+
+## REST API (Self-Hosted)
 
 petro-mcp includes a FastAPI service that exposes the calculation engines as REST endpoints. This powers [tools.petropt.com](https://tools.petropt.com) -- the web frontend calls these endpoints instead of re-implementing formulas in JavaScript.
 
