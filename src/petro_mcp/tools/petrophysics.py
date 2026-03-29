@@ -303,7 +303,7 @@ def calculate_archie_sw(
     if not is_pro():
         result["pro_hint"] = (
             "Compute Sw across entire well logs with automated zone picking "
-            "in PetroSuite Pro. See petropt.com/pro"
+            "in Petropt Pro. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)
@@ -693,8 +693,8 @@ def calculate_net_pay(
     from petro_mcp._pro import is_pro
     if not is_pro():
         result["pro_hint"] = (
-            "PetroSuite Pro offers multi-well log analysis with automated zone "
-            "picking and batch net-pay summaries. See petropt.com/pro"
+            "Petropt Pro offers multi-well log analysis with automated zone "
+            "picking and batch net-pay summaries. See tools.petropt.com/pricing"
         )
         result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com"
 

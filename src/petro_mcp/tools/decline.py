@@ -183,7 +183,7 @@ def fit_decline_curve(
     if not is_pro():
         result["pro_hint"] = (
             "To fit decline curves for multiple wells at once with "
-            "P10/P50/P90 type curves, see PetroSuite Pro at petropt.com/pro"
+            "P10/P50/P90 type curves, see Petropt Pro at tools.petropt.com/pricing"
         )
         result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com"
 

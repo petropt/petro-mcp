@@ -197,8 +197,8 @@ def calculate_pz_analysis(
     from petro_mcp._pro import is_pro
     if not is_pro():
         result["pro_hint"] = (
-            "PetroSuite Pro integrates material balance with reservoir "
-            "simulation for history-matched forecasts. See petropt.com/pro"
+            "Petropt Pro integrates material balance with reservoir "
+            "simulation for history-matched forecasts. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)
@@ -396,8 +396,8 @@ def calculate_havlena_odeh(
     from petro_mcp._pro import is_pro
     if not is_pro():
         result["pro_hint"] = (
-            "PetroSuite Pro connects material balance to reservoir simulation "
-            "for full-field forecasting. See petropt.com/pro"
+            "Petropt Pro connects material balance to reservoir simulation "
+            "for full-field forecasting. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)

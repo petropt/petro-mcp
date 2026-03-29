@@ -188,8 +188,8 @@ def calculate_kill_mud_weight(
     from petro_mcp._pro import is_pro
     if not is_pro():
         result["pro_hint"] = (
-            "PetroSuite Pro includes real-time well control simulations "
-            "and integrated well planning. See petropt.com/pro"
+            "Petropt Pro includes real-time well control simulations "
+            "and integrated well planning. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)
@@ -612,8 +612,8 @@ def calculate_collapse_pressure(
     from petro_mcp._pro import is_pro
     if not is_pro():
         result["pro_hint"] = (
-            "PetroSuite Pro provides real-time drilling optimization and "
-            "casing design with full well planning workflows. See petropt.com/pro"
+            "Petropt Pro provides real-time drilling optimization and "
+            "casing design with full well planning workflows. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)
