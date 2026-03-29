@@ -696,7 +696,7 @@ def calculate_net_pay(
             "Petropt Pro offers multi-well log analysis with automated zone "
             "picking and batch net-pay summaries. See tools.petropt.com/pricing"
         )
-        result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com"
+        result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com/login/"
 
     return json.dumps(result, indent=2)
 

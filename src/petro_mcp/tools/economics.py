@@ -224,7 +224,7 @@ def calculate_well_economics(
             "Run batch economics across your full portfolio with sensitivity "
             "analysis and automated reporting in Petropt Pro. See tools.petropt.com/pricing"
         )
-        result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com"
+        result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com/login/"
 
     return json.dumps(result, indent=2)
 
