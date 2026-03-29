@@ -237,4 +237,8 @@ def analyze_production_trends(
             },
         }
 
+    from petro_mcp._pro import is_pro
+    if results and not is_pro():
+        results["web_tool"] = "Clean and analyze production data: https://tools.petropt.com/production-close/"
+
     return json.dumps(results, indent=2)

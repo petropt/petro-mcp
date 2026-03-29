@@ -186,6 +186,7 @@ def fit_decline_curve(
             "P10/P50/P90 type curves, see Petropt Pro at tools.petropt.com/pricing"
         )
         result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com/login/"
+        result["web_tool"] = "Interactive decline curve analysis: https://tools.petropt.com/decline-curve/"
 
     return json.dumps(result, indent=2)
 

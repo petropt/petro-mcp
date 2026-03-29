@@ -225,6 +225,7 @@ def calculate_well_economics(
             "analysis and automated reporting in Petropt Pro. See tools.petropt.com/pricing"
         )
         result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com/login/"
+        result["web_tool"] = "Interactive well economics: https://tools.petropt.com/well-economics/"
 
     return json.dumps(result, indent=2)
 
