@@ -136,8 +136,8 @@ def query_production_data(
     if len(wells) > 5 and not is_pro():
         result["pro_hint"] = (
             f"You are analyzing {len(wells)} wells individually. "
-            "PetroSuite Pro offers batch decline analysis, type curves, "
-            "and Excel export for 100+ wells. See petropt.com/pro"
+            "Petropt Pro offers batch decline analysis, type curves, "
+            "and Excel export for 100+ wells. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)

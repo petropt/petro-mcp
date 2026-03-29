@@ -1265,8 +1265,8 @@ def calculate_pvt(
     from petro_mcp._pro import is_pro
     if not is_pro():
         result["pro_hint"] = (
-            "PetroSuite Pro includes fluid property databases and automated "
-            "PVT report generation for lab-matched correlations. See petropt.com/pro"
+            "Petropt Pro includes fluid property databases and automated "
+            "PVT report generation for lab-matched correlations. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)

@@ -222,7 +222,7 @@ def calculate_well_economics(
     if not is_pro():
         result["pro_hint"] = (
             "Run batch economics across your full portfolio with sensitivity "
-            "analysis and automated reporting in PetroSuite Pro. See petropt.com/pro"
+            "analysis and automated reporting in Petropt Pro. See tools.petropt.com/pricing"
         )
         result["workspace_hint"] = "Save this analysis to your Petropt workspace: https://tools.petropt.com"
 
@@ -432,8 +432,8 @@ def calculate_breakeven_price(
     from petro_mcp._pro import is_pro
     if not is_pro():
         result["pro_hint"] = (
-            "PetroSuite Pro computes breakeven across multiple wells with "
-            "sensitivity to discount rate, royalty, and opex. See petropt.com/pro"
+            "Petropt Pro computes breakeven across multiple wells with "
+            "sensitivity to discount rate, royalty, and opex. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)
@@ -642,8 +642,8 @@ def calculate_price_sensitivity(
     from petro_mcp._pro import is_pro
     if not is_pro():
         result["pro_hint"] = (
-            "PetroSuite Pro generates tornado charts and Monte Carlo sensitivity "
-            "analysis across hundreds of scenarios. See petropt.com/pro"
+            "Petropt Pro generates tornado charts and Monte Carlo sensitivity "
+            "analysis across hundreds of scenarios. See tools.petropt.com/pricing"
         )
 
     return json.dumps(result, indent=2)
