@@ -27,5 +27,5 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Local
 uv.lock
-
