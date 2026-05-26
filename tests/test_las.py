@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from petro_mcp.tools.las import get_curve_data, get_well_header, list_curves, read_las_file
+from petro_mcp.tools.las import get_curve_data, read_las_file
 
 SAMPLE_LAS = os.path.join(os.path.dirname(__file__), "..", "examples", "sample_well.las")
 
@@ -17,25 +17,6 @@ def test_read_las_file():
     assert result["depth_range"]["num_rows"] > 0
     assert "well_header" in result
     assert "curves_summary" in result
-
-
-def test_get_well_header():
-    result = json.loads(get_well_header(SAMPLE_LAS))
-    assert "WELL" in result
-    assert result["WELL"]["value"] == "WOLFCAMP A-1H"
-    assert "UWI" in result
-    assert "COMP" in result
-
-
-def test_list_curves():
-    result = json.loads(list_curves(SAMPLE_LAS))
-    mnemonics = [c["mnemonic"] for c in result]
-    assert "DEPT" in mnemonics
-    assert "GR" in mnemonics
-    assert "RHOB" in mnemonics
-    assert "NPHI" in mnemonics
-    assert "ILD" in mnemonics
-    assert "SP" in mnemonics
 
 
 def test_get_curve_data():

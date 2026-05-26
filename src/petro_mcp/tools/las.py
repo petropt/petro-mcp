@@ -85,46 +85,6 @@ def read_las_file(file_path: str) -> str:
     return json.dumps(result, indent=2)
 
 
-def get_well_header(file_path: str) -> str:
-    """Extract well header metadata from a LAS file.
-
-    Args:
-        file_path: Path to the LAS file.
-
-    Returns:
-        JSON string with well header fields.
-    """
-    las = _read_las(file_path)
-    header = {}
-    for item in las.well:
-        header[item.mnemonic] = {
-            "value": _safe_value(item.value),
-            "unit": item.unit,
-            "descr": item.descr,
-        }
-    return json.dumps(header, indent=2)
-
-
-def list_curves(file_path: str) -> str:
-    """List all curves in a LAS file with units and descriptions.
-
-    Args:
-        file_path: Path to the LAS file.
-
-    Returns:
-        JSON string with list of curve info.
-    """
-    las = _read_las(file_path)
-    curves = []
-    for curve in las.curves:
-        curves.append({
-            "mnemonic": curve.mnemonic,
-            "unit": curve.unit,
-            "descr": curve.descr,
-        })
-    return json.dumps(curves, indent=2)
-
-
 def get_curve_data(
     file_path: str,
     curve_names: list[str],

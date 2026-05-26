@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "petro-mcp"
-version = "0.8.1"
-description = "MCP server exposing petroleum engineering data and tools to LLMs"
+version = "1.0.0"
+description = "MCP server for petroleum engineering calculations"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -17,12 +17,11 @@ keywords = [
     "petroleum-engineering",
     "well-logs",
     "decline-curve",
-    "oil-gas",
     "LAS",
     "model-context-protocol",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -37,28 +36,35 @@ dependencies = [
     "lasio>=0.31",
     "numpy>=1.24",
     "scipy>=1.10",
-    "petbox-dca>=2.0.0",
-    "fastapi>=0.100",
-    "uvicorn>=0.20",
 ]
-
-[project.optional-dependencies]
-trajectory = ["welleng>=0.8"]
 
 [project.urls]
 Homepage = "https://petropt.com"
-Repository = "https://github.com/petropt/petro-mcp"
-Issues = "https://github.com/petropt/petro-mcp/issues"
 
 [project.scripts]
 petro-mcp = "petro_mcp.server:main"
-petro-api = "petro_mcp.api.app:main"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/petro_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/petro_mcp",
+    "/tests",
+    "/examples/sample_well.las",
+    "/examples/sample_production.csv",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+exclude = [
+    ".claude",
+    "research",
+    "strategy",
+    "CROSS_REPO_TASKS*",
+    ".github",
+    "glama.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

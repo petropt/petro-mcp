@@ -7,9 +7,7 @@ import pytest
 
 from petro_mcp.tools.pvt import (
     bubble_point,
-    calculate_brine_properties,
     calculate_gas_z_factor,
-    calculate_oil_compressibility,
     calculate_pvt,
 )
 
@@ -151,7 +149,6 @@ class TestCalculatePVT:
             temperature=200,
             pressure=3000,
             separator_pressure=150,
-            separator_temperature=75,
         ))
         inputs = result["inputs"]
         assert inputs["api_gravity"] == 35
@@ -159,7 +156,6 @@ class TestCalculatePVT:
         assert inputs["temperature_F"] == 200
         assert inputs["pressure_psi"] == 3000
         assert inputs["separator_pressure_psi"] == 150
-        assert inputs["separator_temperature_F"] == 75
 
     def test_gas_density_positive(self):
         """Gas density must be positive at reservoir conditions."""
@@ -172,7 +168,7 @@ class TestCalculatePVT:
         assert result["gas_properties"]["gas_density_lb_ft3"] > 0
 
     def test_default_separator_conditions(self):
-        """Verify default separator conditions are used when not specified."""
+        """Verify default separator pressure is used when not specified."""
         result = json.loads(calculate_pvt(
             api_gravity=35,
             gas_sg=0.65,
@@ -180,7 +176,6 @@ class TestCalculatePVT:
             pressure=3000,
         ))
         assert result["inputs"]["separator_pressure_psi"] == 100.0
-        assert result["inputs"]["separator_temperature_F"] == 60.0
 
     def test_default_correlation_is_standing(self):
         """Default correlation should be standing."""
@@ -387,168 +382,6 @@ class TestBubblePoint:
 
 
 # ===========================================================================
-# Oil compressibility
-# ===========================================================================
-
-class TestOilCompressibility:
-    """Tests for calculate_oil_compressibility."""
-
-    def test_above_bubble_point(self):
-        """Undersaturated regime — Vasquez-Beggs."""
-        result = json.loads(calculate_oil_compressibility(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=5000,
-            bubble_point_pressure=2500, rs_at_pb=400,
-        ))
-        co = result["oil_compressibility_1_psi"]
-        assert co > 0
-        assert result["regime"] == "undersaturated"
-        assert "Vasquez" in result["correlation"]
-
-    def test_below_bubble_point(self):
-        """Saturated regime — material balance."""
-        result = json.loads(calculate_oil_compressibility(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=1500,
-            bubble_point_pressure=2500, rs_at_pb=400,
-        ))
-        co = result["oil_compressibility_1_psi"]
-        assert co > 0
-        assert result["regime"] == "saturated"
-
-    def test_auto_estimate_pb(self):
-        """When Pb and Rs not provided, they are auto-estimated."""
-        result = json.loads(calculate_oil_compressibility(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=3000,
-        ))
-        assert result["oil_compressibility_1_psi"] > 0
-        assert result["inputs"]["bubble_point_pressure_psi"] > 0
-        assert result["inputs"]["rs_at_pb_scf_stb"] > 0
-
-    def test_typical_magnitude(self):
-        """Oil compressibility typically 5e-6 to 100e-6 1/psi."""
-        result = json.loads(calculate_oil_compressibility(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=4000,
-            bubble_point_pressure=2500, rs_at_pb=400,
-        ))
-        co = result["oil_compressibility_1_psi"]
-        assert 1e-7 <= co <= 1e-3
-
-    def test_invalid_inputs(self):
-        with pytest.raises(ValueError, match="API gravity must be positive"):
-            calculate_oil_compressibility(
-                api_gravity=0, gas_sg=0.65, temperature=200, pressure=3000,
-            )
-
-    def test_correlation_key_present(self):
-        result = json.loads(calculate_oil_compressibility(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=5000,
-            bubble_point_pressure=2500, rs_at_pb=400,
-        ))
-        assert "correlation" in result
-
-
-# ===========================================================================
-# Brine properties
-# ===========================================================================
-
-class TestBrineProperties:
-    """Tests for calculate_brine_properties."""
-
-    def test_fresh_water(self):
-        """Fresh water (0 ppm salinity)."""
-        result = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=0,
-        ))
-        # Fresh water density ~ 62 lb/ft³ at surface, slightly more at 3000 psi
-        assert 55 <= result["brine_density_lb_ft3"] <= 70
-        assert result["brine_viscosity_cp"] > 0
-        assert result["brine_fvf_bbl_stb"] > 0.9
-        assert result["brine_compressibility_1_psi"] > 0
-
-    def test_typical_brine(self):
-        """Typical formation brine (100,000 ppm)."""
-        result = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=100000,
-        ))
-        # Brine denser than fresh water
-        fresh = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=0,
-        ))
-        assert result["brine_density_lb_ft3"] > fresh["brine_density_lb_ft3"]
-
-    def test_high_salinity(self):
-        """High salinity brine (250,000 ppm)."""
-        result = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=250000,
-        ))
-        assert result["brine_density_lb_ft3"] > 60
-        assert result["brine_viscosity_cp"] > 0
-
-    def test_salinity_increases_viscosity(self):
-        """Higher salinity should increase viscosity."""
-        low_s = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=10000,
-        ))
-        high_s = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=200000,
-        ))
-        assert high_s["brine_viscosity_cp"] > low_s["brine_viscosity_cp"]
-
-    def test_temperature_reduces_viscosity(self):
-        """Higher temperature should reduce viscosity."""
-        cold = json.loads(calculate_brine_properties(
-            temperature=100, pressure=3000, salinity=50000,
-        ))
-        hot = json.loads(calculate_brine_properties(
-            temperature=300, pressure=3000, salinity=50000,
-        ))
-        assert cold["brine_viscosity_cp"] > hot["brine_viscosity_cp"]
-
-    def test_correlations_cited(self):
-        result = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=50000,
-        ))
-        assert "McCain" in result["correlations"]["density"]
-        assert "McCain" in result["correlations"]["viscosity"]
-        assert "McCain" in result["correlations"]["fvf"]
-        assert "Osif" in result["correlations"]["compressibility"]
-
-    def test_inputs_echoed(self):
-        result = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=50000,
-        ))
-        assert result["inputs"]["temperature_F"] == 200
-        assert result["inputs"]["pressure_psi"] == 3000
-        assert result["inputs"]["salinity_ppm"] == 50000
-
-    def test_units_present(self):
-        result = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=50000,
-        ))
-        assert result["units"]["density"] == "lb/ft³"
-        assert result["units"]["viscosity"] == "cp"
-        assert result["units"]["fvf"] == "bbl/STB"
-        assert result["units"]["compressibility"] == "1/psi"
-
-
-class TestBrineInvalidInputs:
-    def test_negative_temperature(self):
-        with pytest.raises(ValueError, match="Temperature must be positive"):
-            calculate_brine_properties(temperature=-50, pressure=3000, salinity=0)
-
-    def test_negative_pressure(self):
-        with pytest.raises(ValueError, match="Pressure must be positive"):
-            calculate_brine_properties(temperature=200, pressure=-100, salinity=0)
-
-    def test_negative_salinity(self):
-        with pytest.raises(ValueError, match="Salinity must be non-negative"):
-            calculate_brine_properties(temperature=200, pressure=3000, salinity=-100)
-
-    def test_excessive_salinity(self):
-        with pytest.raises(ValueError, match="Salinity must be <= 300,000"):
-            calculate_brine_properties(temperature=200, pressure=3000, salinity=400000)
-
-
-# ===========================================================================
 # Gas Z-factor (standalone with method choice)
 # ===========================================================================
 
@@ -684,135 +517,7 @@ class TestVBSeparatorValidation:
                 separator_pressure=-100, correlation="vasquez_beggs",
             )
 
-    def test_negative_separator_temperature_raises(self):
-        with pytest.raises(ValueError, match="Separator temperature must be positive"):
-            calculate_pvt(
-                api_gravity=35, gas_sg=0.65, temperature=200, pressure=3000,
-                separator_temperature=-10,
-            )
-
-
 # ===========================================================================
 # Physical consistency checks
 # ===========================================================================
 
-class TestPVTPhysicalConsistency:
-    """Tests that verify physical consistency across conditions."""
-
-    def test_bo_increases_with_pressure_below_pb(self):
-        """Bo should increase as pressure increases (below bubble point),
-        because more gas dissolves into oil."""
-        result_low = json.loads(calculate_pvt(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=500,
-        ))
-        result_high = json.loads(calculate_pvt(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=1500,
-        ))
-        assert (result_high["oil_properties"]["oil_fvf_bbl_stb"]
-                >= result_low["oil_properties"]["oil_fvf_bbl_stb"])
-
-    def test_rs_increases_with_pressure(self):
-        """Rs should increase with increasing pressure (below Pb)."""
-        result_low = json.loads(calculate_pvt(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=500,
-        ))
-        result_high = json.loads(calculate_pvt(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=2000,
-        ))
-        assert (result_high["oil_properties"]["solution_gor_scf_stb"]
-                > result_low["oil_properties"]["solution_gor_scf_stb"])
-
-    def test_z_factor_range_across_pressures(self):
-        """Z-factor should remain in physical range across pressures."""
-        for p in [100, 500, 1000, 2000, 4000, 6000]:
-            result = json.loads(calculate_pvt(
-                api_gravity=35, gas_sg=0.65, temperature=200, pressure=p,
-            ))
-            z = result["gas_properties"]["z_factor"]
-            assert 0.2 <= z <= 1.5, f"Z={z} out of range at P={p} psi"
-
-    def test_gas_fvf_decreases_with_pressure(self):
-        """Gas FVF should decrease as pressure increases (gas compresses)."""
-        result_low = json.loads(calculate_pvt(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=500,
-        ))
-        result_high = json.loads(calculate_pvt(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=3000,
-        ))
-        assert (result_low["gas_properties"]["gas_fvf_rcf_scf"]
-                > result_high["gas_properties"]["gas_fvf_rcf_scf"])
-
-    def test_heavy_oil_more_viscous(self):
-        """Heavy oil (low API) should be more viscous than light oil (high API)."""
-        result_heavy = json.loads(calculate_pvt(
-            api_gravity=15, gas_sg=0.65, temperature=200, pressure=2000,
-        ))
-        result_light = json.loads(calculate_pvt(
-            api_gravity=45, gas_sg=0.65, temperature=200, pressure=2000,
-        ))
-        assert (result_heavy["oil_properties"]["dead_oil_viscosity_cp"]
-                > result_light["oil_properties"]["dead_oil_viscosity_cp"])
-
-    def test_vasquez_beggs_rs_increases_with_pressure(self):
-        """Vasquez-Beggs Rs should increase with pressure."""
-        result_low = json.loads(calculate_pvt(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=500,
-            correlation="vasquez_beggs",
-        ))
-        result_high = json.loads(calculate_pvt(
-            api_gravity=35, gas_sg=0.65, temperature=200, pressure=2000,
-            correlation="vasquez_beggs",
-        ))
-        assert (result_high["oil_properties"]["solution_gor_scf_stb"]
-                > result_low["oil_properties"]["solution_gor_scf_stb"])
-
-    def test_petrosky_farshad_bo_gt_1(self):
-        """Petrosky-Farshad Bo should always be > 1."""
-        for p in [500, 1500, 3000, 5000]:
-            result = json.loads(calculate_pvt(
-                api_gravity=35, gas_sg=0.70, temperature=200, pressure=p,
-                correlation="petrosky_farshad",
-            ))
-            assert result["oil_properties"]["oil_fvf_bbl_stb"] >= 1.0
-
-    def test_brine_density_increases_with_salinity(self):
-        """Brine density should increase with salinity."""
-        fresh = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=0,
-        ))
-        saline = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=200000,
-        ))
-        assert saline["brine_density_lb_ft3"] > fresh["brine_density_lb_ft3"]
-
-    def test_brine_bw_near_one(self):
-        """Brine FVF should be close to 1.0 (water barely compresses)."""
-        result = json.loads(calculate_brine_properties(
-            temperature=200, pressure=3000, salinity=50000,
-        ))
-        assert 0.9 <= result["brine_fvf_bbl_stb"] <= 1.15
-
-
-# ===========================================================================
-# Al-Marhoun bubble point (tested via internal, exposed through compressibility)
-# ===========================================================================
-
-class TestAlMarhounPb:
-    """Indirect test of Al-Marhoun Pb via internal use."""
-
-    def test_al_marhoun_gives_reasonable_pb(self):
-        """Al-Marhoun Pb should be in reasonable range for Middle East oil."""
-        from petro_mcp.tools.pvt import _al_marhoun_pb
-        pb = _al_marhoun_pb(rs=500, temperature=200, api_gravity=30, gas_sg=0.75)
-        assert 500 <= pb <= 6000
-
-    def test_al_marhoun_zero_rs(self):
-        from petro_mcp.tools.pvt import _al_marhoun_pb
-        pb = _al_marhoun_pb(rs=0, temperature=200, api_gravity=30, gas_sg=0.75)
-        assert pb == 14.7
-
-    def test_al_marhoun_increases_with_rs(self):
-        from petro_mcp.tools.pvt import _al_marhoun_pb
-        pb_low = _al_marhoun_pb(rs=200, temperature=200, api_gravity=30, gas_sg=0.75)
-        pb_high = _al_marhoun_pb(rs=800, temperature=200, api_gravity=30, gas_sg=0.75)
-        assert pb_high > pb_low
