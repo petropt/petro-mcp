@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -62,7 +63,20 @@ def _read_production_csv(file_path: str) -> list[dict[str, Any]]:
             for key in ("oil", "gas", "water"):
                 if key in col_map:
                     val = row[col_map[key]].strip()
-                    record[key] = float(val) if val else 0.0
+                    if not val:
+                        record[key] = 0.0
+                    else:
+                        try:
+                            parsed = float(val)
+                        except ValueError as exc:
+                            raise ValueError(
+                                f"Invalid numeric value in column {col_map[key]!r}: {val!r}"
+                            ) from exc
+                        if not math.isfinite(parsed):
+                            raise ValueError(
+                                f"Non-finite value in column {col_map[key]!r}: {val!r}"
+                            )
+                        record[key] = parsed
             records.append(record)
         return records
 
@@ -124,22 +138,5 @@ def query_production_data(
         "summary": summary,
         "records": records,
     }
-
-    from petro_mcp._pro import is_pro
-    # Count unique wells in results
-    wells = set()
-    for r in records:
-        wn = r.get("well_name") or r.get("well") or r.get("Well Name")
-        if wn:
-            wells.add(wn)
-
-    if not is_pro():
-        result["web_tool"] = "Clean and analyze production data: https://tools.petropt.com/production-close/"
-        if len(wells) > 5:
-            result["pro_hint"] = (
-                f"You are analyzing {len(wells)} wells individually. "
-                "Petropt Pro offers batch decline analysis, type curves, "
-                "and Excel export for 100+ wells. See tools.petropt.com/pricing"
-            )
 
     return json.dumps(result, indent=2)

@@ -1,18 +1,13 @@
 """Material balance and volumetric reservoir engineering calculations.
 
-Implements the most common reservoir engineering hand calculations:
+Implements standard reservoir engineering hand calculations:
     - Gas material balance (P/Z vs Gp analysis)
-    - Oil material balance (Havlena-Odeh straight-line method)
     - Volumetric OOIP and OGIP
     - Recovery factor
-    - Radius of investigation
 
 References:
     Craft, B.C., Hawkins, M.F., and Terry, R.E., "Applied Petroleum
         Reservoir Engineering," 3rd ed., Prentice Hall, 2015.
-    Havlena, D. and Odeh, A.S., "The Material Balance as an Equation of
-        a Straight Line," JPT, August 1963, pp. 896-900.
-    Lee, J., "Well Testing," SPE Textbook Series, Vol. 1, 1982.
 """
 
 from __future__ import annotations
@@ -194,217 +189,12 @@ def calculate_pz_analysis(
             "abandonment_recovery_factor": abandonment_recovery,
         }
 
-    from petro_mcp._pro import is_pro
-    if not is_pro():
-        result["pro_hint"] = (
-            "Petropt Pro integrates material balance with reservoir "
-            "simulation for history-matched forecasts. See tools.petropt.com/pricing"
-        )
 
     return json.dumps(result, indent=2)
 
 
 # ---------------------------------------------------------------------------
-# 2. Oil Material Balance — Havlena-Odeh Straight-Line Method
-# ---------------------------------------------------------------------------
-
-def calculate_havlena_odeh(
-    pressures: list[float],
-    np_values: list[float],
-    rp_values: list[float],
-    wp_values: list[float],
-    wi_values: list[float],
-    bo_values: list[float],
-    rs_values: list[float],
-    bg_values: list[float],
-    bw_values: list[float],
-    boi: float,
-    rsi: float,
-    bgi: float,
-    cf: float | None = None,
-    swi: float | None = None,
-) -> str:
-    """Havlena-Odeh straight-line oil material balance.
-
-    Calculates the F (fluid withdrawal) and Et (total expansion) terms to
-    identify drive mechanism and estimate OOIP.
-
-    Args:
-        pressures: Reservoir pressures at each time step (psi).
-        np_values: Cumulative oil production at each step (STB).
-        rp_values: Cumulative producing GOR at each step (scf/STB).
-        wp_values: Cumulative water production at each step (STB).
-        wi_values: Cumulative water injection at each step (STB).
-        bo_values: Oil FVF at each pressure (bbl/STB).
-        rs_values: Solution GOR at each pressure (scf/STB).
-        bg_values: Gas FVF at each pressure (bbl/scf).
-        bw_values: Water FVF at each pressure (bbl/STB).
-        boi: Initial oil FVF (bbl/STB).
-        rsi: Initial solution GOR (scf/STB).
-        bgi: Initial gas FVF (bbl/scf).
-        cf: Formation compressibility (1/psi). Optional.
-        swi: Initial water saturation (fraction). Optional.
-
-    Returns:
-        JSON string with OOIP, drive indices, F vs Et data.
-    """
-    arrays = [
-        pressures, np_values, rp_values, wp_values, wi_values,
-        bo_values, rs_values, bg_values, bw_values,
-    ]
-    names = [
-        "pressures", "np_values", "rp_values", "wp_values", "wi_values",
-        "bo_values", "rs_values", "bg_values", "bw_values",
-    ]
-    _validate_equal_length(names, *arrays)
-
-    n = len(pressures)
-    if n < 2:
-        raise ValueError("At least 2 data points are required")
-
-    _validate_positive("boi", boi)
-    _validate_non_negative("rsi", rsi)
-    _validate_positive("bgi", bgi)
-
-    if cf is not None:
-        _validate_non_negative("cf", cf)
-    if swi is not None:
-        _validate_fraction("swi", swi)
-
-    # Calculate F (underground withdrawal) and Et (total expansion) at each step
-    f_values = []
-    eo_values = []
-    eg_values = []
-    efw_values = []
-    et_values = []
-
-    pi = pressures[0]  # initial pressure
-
-    for i in range(n):
-        np_i = np_values[i]
-        rp_i = rp_values[i]
-        wp_i = wp_values[i]
-        wi_i = wi_values[i]
-        bo_i = bo_values[i]
-        rs_i = rs_values[i]
-        bg_i = bg_values[i]
-        bw_i = bw_values[i]
-
-        # F = Np * [Bo + (Rp - Rs) * Bg] + Wp * Bw - Wi * Bw
-        bt = bo_i + (rp_i - rs_i) * bg_i
-        f_i = np_i * bt + wp_i * bw_i - wi_i * bw_i
-
-        # Eo = (Bo - Boi) + (Rsi - Rs) * Bg  (oil + dissolved gas expansion)
-        eo_i = (bo_i - boi) + (rsi - rs_i) * bg_i
-
-        # Eg = Boi * (Bg/Bgi - 1)  (gas cap expansion)
-        eg_i = boi * (bg_i / bgi - 1) if bgi > 0 else 0.0
-
-        # Efw = connate water expansion + pore volume reduction
-        dp = pi - pressures[i]
-        if cf is not None and swi is not None and (1 - swi) > 0:
-            efw_i = boi * ((cf + swi * 3e-6) / (1 - swi)) * dp
-        else:
-            efw_i = 0.0
-
-        et_i = eo_i + eg_i + efw_i
-
-        f_values.append(round(f_i, 4))
-        eo_values.append(round(eo_i, 8))
-        eg_values.append(round(eg_i, 8))
-        efw_values.append(round(efw_i, 8))
-        et_values.append(round(et_i, 8))
-
-    # Estimate OOIP from F/Et slope (F = N * Et for no aquifer/gas cap)
-    # Use linear regression through origin: N = sum(F*Et) / sum(Et^2)
-    sum_f_et = sum(f * et for f, et in zip(f_values, et_values) if et != 0)
-    sum_et2 = sum(et * et for et in et_values if et != 0)
-
-    if sum_et2 > 0:
-        ooip = round(sum_f_et / sum_et2, 2)
-    else:
-        ooip = None
-
-    # Drive indices (at the last time step)
-    last_f = f_values[-1] if f_values else 0
-    ddi = None  # depletion drive index
-    sdi = None  # segregation (gas cap) drive index
-    wdi = None  # water drive index
-
-    if last_f != 0 and ooip is not None and ooip > 0:
-        n_eo = ooip * eo_values[-1]
-        n_eg = ooip * eg_values[-1]
-        n_efw = ooip * efw_values[-1]
-        net_water = wp_values[-1] * bw_values[-1] - wi_values[-1] * bw_values[-1]
-
-        ddi = round(n_eo / last_f, 4) if last_f != 0 else None
-        sdi = round(n_eg / last_f, 4) if last_f != 0 else None
-        wdi = round(net_water / last_f, 4) if last_f != 0 else None
-
-    # Identify dominant drive mechanism
-    drives = {"depletion_drive": ddi, "gas_cap_drive": sdi, "water_drive": wdi}
-    dominant = None
-    if ddi is not None and sdi is not None and wdi is not None:
-        abs_drives = {k: abs(v) if v is not None else 0 for k, v in drives.items()}
-        dominant = max(abs_drives, key=abs_drives.get)
-
-    # R-squared for F vs N*Et
-    if ooip is not None:
-        predicted = [ooip * et for et in et_values]
-        y_mean = sum(f_values) / n if n > 0 else 0
-        ss_tot = sum((f - y_mean) ** 2 for f in f_values)
-        ss_res = sum((f - p) ** 2 for f, p in zip(f_values, predicted))
-        r_squared = round(1 - ss_res / ss_tot, 6) if ss_tot > 0 else 0.0
-    else:
-        r_squared = None
-
-    result = {
-        "method": "Havlena-Odeh Straight-Line Material Balance",
-        "inputs": {
-            "num_data_points": n,
-            "initial_pressure_psi": round(pi, 2),
-            "boi_bbl_stb": round(boi, 6),
-            "rsi_scf_stb": round(rsi, 2),
-            "bgi_bbl_scf": round(bgi, 8),
-        },
-        "results": {
-            "ooip_stb": ooip,
-            "r_squared": r_squared,
-            "drive_indices": {
-                "depletion_drive_index": ddi,
-                "gas_cap_drive_index": sdi,
-                "water_drive_index": wdi,
-            },
-            "dominant_drive": dominant,
-        },
-        "units": {
-            "ooip": "STB",
-            "pressures": "psi",
-            "np": "STB",
-            "rp": "scf/STB",
-            "wp": "STB",
-        },
-        "plot_data": {
-            "f_rb": f_values,
-            "et_rb_stb": et_values,
-            "eo_rb_stb": eo_values,
-            "eg_rb_stb": eg_values,
-            "efw_rb_stb": efw_values,
-        },
-    }
-
-    from petro_mcp._pro import is_pro
-    if not is_pro():
-        result["pro_hint"] = (
-            "Petropt Pro connects material balance to reservoir simulation "
-            "for full-field forecasting. See tools.petropt.com/pricing"
-        )
-
-    return json.dumps(result, indent=2)
-
-
-# ---------------------------------------------------------------------------
-# 3. Volumetric OOIP
+# 2. Volumetric OOIP
 # ---------------------------------------------------------------------------
 
 def calculate_volumetric_ooip(
@@ -467,7 +257,7 @@ def calculate_volumetric_ooip(
 
 
 # ---------------------------------------------------------------------------
-# 4. Volumetric OGIP
+# 3. Volumetric OGIP
 # ---------------------------------------------------------------------------
 
 def calculate_volumetric_ogip(
@@ -530,7 +320,7 @@ def calculate_volumetric_ogip(
 
 
 # ---------------------------------------------------------------------------
-# 5. Recovery Factor
+# 4. Recovery Factor
 # ---------------------------------------------------------------------------
 
 def calculate_recovery_factor(
@@ -567,74 +357,6 @@ def calculate_recovery_factor(
         },
         "units": {
             "note": "Units match caller input (STB for oil, scf/Bcf for gas)",
-        },
-    }
-
-    return json.dumps(result, indent=2)
-
-
-# ---------------------------------------------------------------------------
-# 6. Radius of Investigation
-# ---------------------------------------------------------------------------
-
-def calculate_radius_of_investigation(
-    permeability_md: float,
-    time_hours: float,
-    porosity: float,
-    viscosity_cp: float,
-    total_compressibility: float,
-) -> str:
-    """Calculate radius of investigation for a well test.
-
-    r_inv = 0.029 * sqrt(k * t / (phi * mu * ct))
-
-    From Lee (1982), "Well Testing."
-
-    Args:
-        permeability_md: Formation permeability in millidarcies.
-        time_hours: Elapsed time in hours.
-        porosity: Porosity (fraction, 0-1).
-        viscosity_cp: Fluid viscosity in centipoise.
-        total_compressibility: Total system compressibility in 1/psi.
-
-    Returns:
-        JSON string with radius of investigation in feet.
-    """
-    _validate_positive("permeability_md", permeability_md)
-    _validate_positive("time_hours", time_hours)
-    _validate_fraction("porosity", porosity)
-    if porosity == 0:
-        raise ValueError("porosity must be > 0 for radius of investigation")
-    _validate_positive("viscosity_cp", viscosity_cp)
-    _validate_positive("total_compressibility", total_compressibility)
-
-    r_inv = 0.029 * math.sqrt(
-        permeability_md * time_hours
-        / (porosity * viscosity_cp * total_compressibility)
-    )
-
-    # Also calculate area investigated
-    area_ft2 = math.pi * r_inv ** 2
-    area_acres = area_ft2 / 43560.0
-
-    result = {
-        "method": "Radius of Investigation",
-        "correlation": "Lee (1982)",
-        "inputs": {
-            "permeability_md": permeability_md,
-            "time_hours": time_hours,
-            "porosity": porosity,
-            "viscosity_cp": viscosity_cp,
-            "total_compressibility_1_psi": total_compressibility,
-        },
-        "results": {
-            "radius_of_investigation_ft": round(r_inv, 2),
-            "area_investigated_ft2": round(area_ft2, 2),
-            "area_investigated_acres": round(area_acres, 4),
-        },
-        "units": {
-            "radius": "ft",
-            "area": "ft² and acres",
         },
     }
 

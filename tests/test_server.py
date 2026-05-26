@@ -23,45 +23,37 @@ class TestCreateServer:
         """create_server() with no args loads every group."""
         server = create_server()
         names = _tool_names(server)
-        # Spot-check a tool from several groups
-        assert "read_las" in names            # las
-        assert "query_production" in names     # production
-        assert "fit_decline" in names          # decline
-        assert "calculate_ratios" in names     # calculations
-        assert "convert_oilfield_units" in names  # units
-        assert "calculate_pvt_properties" in names  # pvt
-        assert "calculate_vshale" in names     # petrophysics
-        assert "pz_analysis" in names          # reservoir
-        assert "calculate_hydrostatic_pressure" in names  # drilling
-        assert "calculate_well_economics" in names  # economics
-        assert "calculate_beggs_brill" in names  # production_eng
+        # Spot-check a tool from each group
+        assert "read_las" in names                  # las
+        assert "query_production" in names           # production
+        assert "fit_decline" in names                # decline
+        assert "convert_oilfield_units" in names     # units
+        assert "calculate_pvt_properties" in names   # pvt
+        assert "calculate_vshale" in names           # petrophysics
+        assert "pz_analysis" in names                # reservoir
 
     def test_single_group(self):
         """Only the requested group's tools are registered."""
         server = create_server({"las"})
         names = _tool_names(server)
         assert "read_las" in names
-        assert "get_header" in names
-        assert "get_curves" in names
         assert "get_curve_values" in names
         # Other groups must be absent
         assert "fit_decline" not in names
         assert "query_production" not in names
-        assert "calculate_ratios" not in names
 
     def test_multiple_groups(self):
         """Multiple groups can be loaded together."""
-        server = create_server({"decline", "economics"})
+        server = create_server({"decline", "pvt"})
         names = _tool_names(server)
         assert "fit_decline" in names
         assert "calculate_eur" in names
-        assert "calculate_well_economics" in names
-        assert "calculate_npv" in names
+        assert "calculate_pvt_properties" in names
         # las should be absent
         assert "read_las" not in names
 
     def test_empty_set_loads_nothing(self):
-        """An explicit empty set loads no tools (but resources/prompts still work)."""
+        """An explicit empty set loads no tools."""
         server = create_server(set())
         names = _tool_names(server)
         assert len(names) == 0
