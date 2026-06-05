@@ -38,6 +38,7 @@ class TestCreateServer:
         names = _tool_names(server)
         assert "read_las" in names
         assert "get_curve_values" in names
+        assert "compare_logs" in names
         # Other groups must be absent
         assert "fit_decline" not in names
         assert "query_production" not in names

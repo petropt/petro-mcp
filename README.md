@@ -14,16 +14,17 @@ pip install petro-mcp
 ## Run
 
 ```bash
-petro-mcp                       # start the MCP server (stdio)
-petro-mcp --list-tools          # list available tool groups
-petro-mcp --tools las,decline   # load only specific groups
+petro-mcp                              # start the MCP server (stdio)
+petro-mcp --list-tools                 # list available tool groups
+petro-mcp --tools las,decline          # load only specific groups
+petro-mcp --allowed-paths /data/wells  # restrict file reads to a directory
 ```
 
 ## Tool groups
 
 | Group | Tools |
 |---|---|
-| `las` | Read LAS 2.0 well log files (header, curves, depth-filtered curve data) |
+| `las` | Read LAS 2.0 well log files (header, curves, depth-filtered curve data); compare two or more wells |
 | `production` | Load production data from CSV (date, well, oil/gas/water rates) |
 | `decline` | Arps decline-curve fitting (exponential, hyperbolic, harmonic); EUR |
 | `pvt` | Bubble point, black-oil PVT properties, gas Z-factor |

@@ -5,9 +5,12 @@ from __future__ import annotations
 import csv
 import json
 import math
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from petro_mcp.utils import validate_path
 
 
 def _parse_date(date_str: str) -> datetime:
@@ -20,15 +23,16 @@ def _parse_date(date_str: str) -> datetime:
     raise ValueError(f"Cannot parse date: {date_str}")
 
 
-def _read_production_csv(file_path: str) -> list[dict[str, Any]]:
+def _read_production_csv(
+    file_path: str,
+    allowed_paths: Sequence[Path | str] | None = None,
+) -> list[dict[str, Any]]:
     """Read a production CSV file.
 
     Expected columns: date, well_name (optional), oil, gas, water.
     Column matching is case-insensitive and flexible.
     """
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Production file not found: {file_path}")
+    path = validate_path(file_path, allowed_paths)
 
     with open(path, newline="") as f:
         reader = csv.DictReader(f)
@@ -86,6 +90,7 @@ def query_production_data(
     well_name: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    allowed_paths: Sequence[Path | str] | None = None,
 ) -> str:
     """Query production data from a CSV file.
 
@@ -94,11 +99,12 @@ def query_production_data(
         well_name: Optional well name to filter by.
         start_date: Optional start date (YYYY-MM-DD).
         end_date: Optional end date (YYYY-MM-DD).
+        allowed_paths: Optional allowlist of root directories.
 
     Returns:
         JSON string with filtered production records and summary statistics.
     """
-    records = _read_production_csv(file_path)
+    records = _read_production_csv(file_path, allowed_paths=allowed_paths)
 
     if well_name:
         records = [r for r in records if r.get("well_name", "").lower() == well_name.lower()]

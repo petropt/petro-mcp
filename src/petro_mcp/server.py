@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 
 
@@ -10,7 +13,7 @@ from mcp.server.fastmcp import FastMCP
 # ---------------------------------------------------------------------------
 
 TOOL_GROUPS: dict[str, str] = {
-    "las": "LAS well log parsing",
+    "las": "LAS well log parsing + multi-well comparison",
     "production": "Production data loader",
     "decline": "Decline curve analysis (Arps)",
     "pvt": "PVT correlations",
@@ -25,7 +28,11 @@ TOOL_GROUPS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def _register_las(mcp: FastMCP) -> None:
+def _register_las(
+    mcp: FastMCP,
+    allowed_paths: Sequence[Path | str] | None = None,
+) -> None:
+    from petro_mcp.tools.compare import compare_well_logs
     from petro_mcp.tools.las import get_curve_data, read_las_file
 
     @mcp.tool()
@@ -35,7 +42,7 @@ def _register_las(mcp: FastMCP) -> None:
         Args:
             file_path: Absolute path to the LAS file.
         """
-        return read_las_file(file_path)
+        return read_las_file(file_path, allowed_paths=allowed_paths)
 
     @mcp.tool()
     def get_curve_values(
@@ -43,20 +50,44 @@ def _register_las(mcp: FastMCP) -> None:
         curve_names: list[str],
         start_depth: float | None = None,
         end_depth: float | None = None,
+        max_samples: int = 0,
     ) -> str:
         """Get specific curve data from a LAS file with optional depth range filtering.
+
+        For curves longer than ``max_samples`` points in the filtered range,
+        the result is downsampled (every Nth point). Default 0 means no cap.
 
         Args:
             file_path: Absolute path to the LAS file.
             curve_names: List of curve mnemonics to retrieve (e.g., ["GR", "RHOB"]).
             start_depth: Optional start depth for filtering.
             end_depth: Optional end depth for filtering.
+            max_samples: Optional cap on returned points per curve (default 0 = no cap).
         """
-        return get_curve_data(file_path, curve_names, start_depth, end_depth)
+        return get_curve_data(
+            file_path,
+            curve_names,
+            start_depth,
+            end_depth,
+            max_samples=max_samples,
+            allowed_paths=allowed_paths,
+        )
+
+    @mcp.tool()
+    def compare_logs(paths: list[str]) -> str:
+        """Compare two or more LAS files: common curves, depth overlap, unit consistency.
+
+        Args:
+            paths: Two or more absolute LAS file paths.
+        """
+        return compare_well_logs(paths, allowed_paths=allowed_paths)
 
 
 
-def _register_production(mcp: FastMCP) -> None:
+def _register_production(
+    mcp: FastMCP,
+    allowed_paths: Sequence[Path | str] | None = None,
+) -> None:
     from petro_mcp.tools.production import query_production_data
 
     @mcp.tool()
@@ -74,7 +105,9 @@ def _register_production(mcp: FastMCP) -> None:
             start_date: Optional start date (YYYY-MM-DD).
             end_date: Optional end date (YYYY-MM-DD).
         """
-        return query_production_data(file_path, well_name, start_date, end_date)
+        return query_production_data(
+            file_path, well_name, start_date, end_date, allowed_paths=allowed_paths
+        )
 
 
 def _register_decline(mcp: FastMCP) -> None:
@@ -419,11 +452,18 @@ _GROUP_REGISTRARS: dict[str, callable] = {
 # ---------------------------------------------------------------------------
 
 
-def create_server(groups: set[str] | None = None) -> FastMCP:
+def create_server(
+    groups: set[str] | None = None,
+    allowed_paths: Sequence[Path | str] | None = None,
+) -> FastMCP:
     """Create an MCP server with selected tool groups.
 
     Args:
         groups: Set of tool group names to load.  ``None`` means all groups.
+        allowed_paths: Optional allowlist of root directories. When provided,
+            file-reading tools (LAS, production CSV, compare) will reject
+            paths outside these roots. When ``None`` or empty, all paths are
+            accepted (backward-compatible default).
 
     Returns:
         A configured :class:`FastMCP` instance ready to run.
@@ -436,9 +476,14 @@ def create_server(groups: set[str] | None = None) -> FastMCP:
     if groups is None:
         groups = set(TOOL_GROUPS.keys())
 
+    file_groups = {"las", "production"}
     for name in groups:
         registrar = _GROUP_REGISTRARS.get(name)
-        if registrar is not None:
+        if registrar is None:
+            continue
+        if name in file_groups:
+            registrar(mcp, allowed_paths=allowed_paths)
+        else:
             registrar(mcp)
 
     return mcp
@@ -468,6 +513,13 @@ def main():
         action="store_true",
         help="List available tool groups and exit",
     )
+    parser.add_argument(
+        "--allowed-paths",
+        type=str,
+        default=None,
+        help="Comma-separated allowlist of root directories for file-reading "
+             "tools. When omitted, all paths are accepted.",
+    )
     args = parser.parse_args()
 
     if args.list_tools:
@@ -482,7 +534,11 @@ def main():
         if invalid:
             parser.error(f"Unknown tool groups: {invalid}")
 
-    server = create_server(groups)
+    allowed_paths = None
+    if args.allowed_paths:
+        allowed_paths = [p.strip() for p in args.allowed_paths.split(",") if p.strip()]
+
+    server = create_server(groups, allowed_paths=allowed_paths)
     server.run()
 
 

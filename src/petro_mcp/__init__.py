@@ -1,6 +1,6 @@
 """petro-mcp: MCP server for petroleum engineering calculations."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = ["create_server"]
 
 
